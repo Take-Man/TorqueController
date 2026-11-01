@@ -4,8 +4,7 @@ import Carbon
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let keyView = KeyView(label: "あ")
-    private var panel: KeyPanel?
+    private var keyboard: FlickKeyboard?
     private var permissionTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -14,9 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         statusItem.menu = menu
 
-        keyView.onPress = { TextSender.send("あ") }
-        panel = makePanel()
-        panel?.orderFrontRegardless()
+        keyboard = FlickKeyboard()
+        keyboard?.show()
 
         // 未許可なら、初回だけ macOS の許可ダイアログを出す
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
@@ -51,19 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item)
     }
 
-    private func makePanel() -> KeyPanel {
-        let side: CGFloat = 56
-        let margin: CGFloat = 16
-        let visible = NSScreen.main?.visibleFrame ?? .zero
-        let frame = NSRect(x: visible.minX + margin, y: visible.minY + margin, width: side, height: side)
-        let panel = KeyPanel(contentRect: frame)
-        panel.contentView = keyView
-        return panel
-    }
-
     private func refreshPermissionState() {
         let trusted = AXIsProcessTrusted()
-        keyView.isEnabled = trusted
+        keyboard?.setEnabled(trusted)
         let symbol = trusted ? "keyboard" : "exclamationmark.triangle"
         statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "TorqueController")
     }

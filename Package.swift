@@ -14,5 +14,6 @@ let package = Package(
         .executableTarget(name: "TorqueCLI", dependencies: ["TorqueEngine"]),
         .executableTarget(name: "TorqueController", dependencies: ["TorqueEngine"]),
         .testTarget(name: "TorqueEngineTests", dependencies: ["TorqueEngine"]),
+        .testTarget(name: "TorqueControllerTests", dependencies: ["TorqueController"]),
     ]
 )

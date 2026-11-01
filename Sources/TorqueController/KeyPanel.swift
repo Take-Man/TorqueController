@@ -26,6 +26,25 @@ final class PanelBackgroundView: NSView {
     }
 }
 
+/// パネルの余白に置く、パネルを掴むための持ち手。6個の点を描く。
+final class GripView: NSView {
+    private static let dotDiameter: CGFloat = 3
+    private static let dotSpacing: CGFloat = 7
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.tertiaryLabelColor.setFill()
+        for column in 0..<2 {
+            for row in 0..<3 {
+                let x = bounds.midX + (CGFloat(column) - 0.5) * Self.dotSpacing - Self.dotDiameter / 2
+                let y = bounds.midY + (CGFloat(row) - 1) * Self.dotSpacing - Self.dotDiameter / 2
+                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: Self.dotDiameter, height: Self.dotDiameter)).fill()
+            }
+        }
+    }
+}
+
 /// 切替キーの背景。ハイライトがキーの文字の下を滑れるよう、キーとは別に描く。
 final class ModeBackgroundView: NSView {
     var keyFrames: [NSRect] = []
@@ -50,6 +69,12 @@ final class KeyView: NSView {
     }
     /// 文字の代わりに表示する SF Symbols の名前。
     var symbolName: String? {
+        didSet { needsDisplay = true }
+    }
+    var symbolSize: CGFloat = 18
+    var cornerRadius: CGFloat = 8
+    /// 枠と文字の色で示す印。背景を塗らないので、押したときの反応と紛れない。
+    var isMarked = false {
         didSet { needsDisplay = true }
     }
     /// 上下左右に小さく表示する文字。
@@ -129,10 +154,19 @@ final class KeyView: NSView {
         if fillsBackground || isPressed {
             let background: NSColor = isPressed || isSelected ? .controlAccentColor : .controlColor
             background.setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+            NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
         }
 
-        let color: NSColor = isPressed || isSelected ? .white : (isEnabled || isDimmed ? .labelColor : .tertiaryLabelColor)
+        var color: NSColor = isPressed || isSelected ? .white : (isEnabled || isDimmed ? .labelColor : .tertiaryLabelColor)
+        if isMarked {
+            if !isPressed {
+                color = .controlAccentColor
+            }
+            NSColor.controlAccentColor.setStroke()
+            let frame = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7)
+            frame.lineWidth = 2
+            frame.stroke()
+        }
         if let symbolName {
             drawSymbol(symbolName, color: color)
         } else {
@@ -158,7 +192,7 @@ final class KeyView: NSView {
     }
 
     private func drawSymbol(_ name: String, color: NSColor) {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+        let configuration = NSImage.SymbolConfiguration(pointSize: symbolSize, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
         guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)

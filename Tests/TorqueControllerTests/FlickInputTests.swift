@@ -39,20 +39,20 @@ import Testing
 }
 
 @Test func shiftOnceReleasesAfterOneCharacter() {
-    let once = ShiftState.off.pressed(isDoubleClick: false)
+    let once = LatchState.off.pressed(isDoubleClick: false)
     #expect(once == .once)
     #expect(once.afterInput == .off)
 }
 
 @Test func shiftDoubleClickLocksUntilPressedAgain() {
-    let locked = ShiftState.off.pressed(isDoubleClick: false).pressed(isDoubleClick: true)
+    let locked = LatchState.off.pressed(isDoubleClick: false).pressed(isDoubleClick: true)
     #expect(locked == .locked)
     #expect(locked.afterInput == .locked)
     #expect(locked.pressed(isDoubleClick: false) == .off)
 }
 
 @Test func shiftSlowSecondPressTurnsOff() {
-    #expect(ShiftState.once.pressed(isDoubleClick: false) == .off)
+    #expect(LatchState.once.pressed(isDoubleClick: false) == .off)
 }
 
 @Test func uppercasedKeysInputCapitals() {

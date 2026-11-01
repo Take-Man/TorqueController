@@ -53,7 +53,7 @@ final class FlickKeyboard {
 
     private var composition = Composition()
     private var mode = InputMode.kana
-    private var shift = ShiftState.off
+    private var shift = LatchState.off
     private var isEnabled = true
 
     private var converter: Converter?
@@ -76,7 +76,8 @@ final class FlickKeyboard {
         shift == .off ? mode.grid : mode.grid.map(\.uppercased)
     }
 
-    init(converter: Converter?, learningURL: URL) {
+    /// origin はキーボードのパネルの左下。
+    init(origin: NSPoint, converter: Converter?, learningURL: URL) {
         self.converter = converter
         self.learningURL = learningURL
         overlayPanel = KeyPanel(contentRect: NSScreen.main?.frame ?? .zero)
@@ -89,7 +90,7 @@ final class FlickKeyboard {
             width: contentWidth + Metrics.padding * 2,
             height: gridHeight + Metrics.padding * 2
         )
-        panel = KeyPanel(contentRect: NSRect(origin: Self.initialOrigin(), size: size))
+        panel = KeyPanel(contentRect: NSRect(origin: origin, size: size))
         panel.level = Levels.keyboard
 
         let guideSide = (FlickGuideView.outerRadius + 2) * 2
@@ -119,6 +120,24 @@ final class FlickKeyboard {
 
     func show() {
         panel.orderFrontRegardless()
+        showSession()
+    }
+
+    /// 隠すときは変換を抜ける。入力欄の文字は残り、次に表示したときに戻る。
+    func hide() {
+        finishConversion()
+        panel.orderOut(nil)
+        compositionPanel.orderOut(nil)
+    }
+
+    /// 表示を切り替えて、切り替えた後の表示状態を返す。
+    func toggle() -> Bool {
+        if panel.isVisible {
+            hide()
+        } else {
+            show()
+        }
+        return panel.isVisible
     }
 
     func setEnabled(_ isEnabled: Bool) {
@@ -141,7 +160,12 @@ final class FlickKeyboard {
         deleteView.symbolName = isConverting ? CandidateOverlayView.backSymbol : Self.deleteSymbol
     }
 
-    private static func initialOrigin() -> NSPoint {
+    static var panelHeight: CGFloat {
+        CGFloat(Metrics.rows) * Metrics.keySide + CGFloat(Metrics.rows - 1) * Metrics.gap + Metrics.padding * 2
+    }
+
+    /// キーボード全体の左下の初期位置。
+    static func initialOrigin() -> NSPoint {
         guard let screen = NSScreen.main else { return .zero }
         return NSPoint(
             x: screen.visibleFrame.minX + Metrics.screenMargin,
@@ -207,7 +231,15 @@ final class FlickKeyboard {
             modeViews[mode] = view
         }
 
-        deleteView.frame = frame(x: rightX, position: 0)
+        // 削除キーは正方形で枠の下にそろえ、上の余白に持ち手を置く
+        let deleteSlot = frame(x: rightX, position: 0)
+        deleteView.frame = NSRect(x: deleteSlot.minX, y: deleteSlot.minY, width: Metrics.sideKeyWidth, height: Metrics.sideKeyWidth)
+        background.addSubview(GripView(frame: NSRect(
+            x: deleteSlot.minX,
+            y: deleteView.frame.maxY,
+            width: Metrics.sideKeyWidth,
+            height: deleteSlot.maxY - deleteView.frame.maxY
+        )))
         deleteView.onBegin = { [weak self] _ in self?.deleteBegan() }
         deleteView.onDrag = { [weak self] offset in self?.deleteDragged(offset) }
         deleteView.onEnd = { [weak self] offset, isInside in self?.deleteEnded(offset, isInside: isInside) }
@@ -242,7 +274,7 @@ final class FlickKeyboard {
                     view.hints = characters.outer
                 }
             case .shift:
-                view.symbolName = shift.symbolName
+                view.symbolName = shift.shiftSymbol
                 view.isSelected = shift != .off
             case .cycle:
                 break
@@ -533,6 +565,7 @@ final class FlickKeyboard {
             compositionPanel.orderOut(nil)
             return
         }
+        guard panel.isVisible else { return }
         compositionPanel.setFrame(compositionPanelFrame, display: true)
         compositionPanel.orderFrontRegardless()
     }

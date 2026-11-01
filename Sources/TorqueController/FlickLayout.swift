@@ -66,11 +66,11 @@ enum GridKey: Equatable {
     }
 }
 
-/// 英字の大文字入力の状態。スマートフォンのシフトキーと同じく、1回で次の1文字だけ大文字、連続2回で固定。
-enum ShiftState {
+/// 1回だけ効く状態と固定の切替。スマートフォンのシフトキーと同じく、1回で次の入力だけ、連続2回で固定。
+enum LatchState {
     case off, once, locked
 
-    func pressed(isDoubleClick: Bool) -> ShiftState {
+    func pressed(isDoubleClick: Bool) -> LatchState {
         switch self {
         case .off: .once
         case .once: isDoubleClick ? .locked : .off
@@ -78,11 +78,11 @@ enum ShiftState {
         }
     }
 
-    var afterInput: ShiftState {
+    var afterInput: LatchState {
         self == .once ? .off : self
     }
 
-    var symbolName: String {
+    var shiftSymbol: String {
         switch self {
         case .off: "shift"
         case .once: "shift.fill"

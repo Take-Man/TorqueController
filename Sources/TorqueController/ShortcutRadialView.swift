@@ -21,9 +21,9 @@ final class ShortcutRadialView: NSView {
             selected = path
         }
 
-        drawCancel(center: center)
+        drawCancel(center: center, ringWidth: radial.ringWidth)
         for node in radial.visibleNodes(for: selection) {
-            drawNode(node, center: center, isActive: selected.contains(node))
+            drawNode(node, center: center, ringWidth: radial.ringWidth, isActive: selected.contains(node))
         }
 
         let radius = ShortcutRadial.centerRadius
@@ -40,9 +40,9 @@ final class ShortcutRadialView: NSView {
         135 - position
     }
 
-    private func drawNode(_ node: ShortcutRadial.Node, center: NSPoint, isActive: Bool) {
-        let inner = ShortcutRadial.centerRadius + ShortcutRadial.ringWidth * CGFloat(node.ring)
-        let outer = inner + ShortcutRadial.ringWidth
+    private func drawNode(_ node: ShortcutRadial.Node, center: NSPoint, ringWidth: CGFloat, isActive: Bool) {
+        let inner = ShortcutRadial.centerRadius + ringWidth * CGFloat(node.ring)
+        let outer = inner + ringWidth
         let path = NSBezierPath()
         path.appendArc(withCenter: center, radius: outer, startAngle: angle(node.start), endAngle: angle(node.end), clockwise: true)
         path.appendArc(withCenter: center, radius: inner, startAngle: angle(node.end), endAngle: angle(node.start))
@@ -57,9 +57,9 @@ final class ShortcutRadialView: NSView {
         drawLabel(node.label, at: NSPoint(x: center.x + cos(middle) * radius, y: center.y + sin(middle) * radius), isActive: isActive)
     }
 
-    private func drawCancel(center: NSPoint) {
+    private func drawCancel(center: NSPoint, ringWidth: CGFloat) {
         let inner = ShortcutRadial.centerRadius
-        let outer = inner + ShortcutRadial.ringWidth / 2
+        let outer = inner + ringWidth / 2
         let path = NSBezierPath()
         path.appendArc(withCenter: center, radius: outer, startAngle: 135, endAngle: 225)
         path.appendArc(withCenter: center, radius: inner, startAngle: 225, endAngle: 135, clockwise: true)
@@ -74,7 +74,7 @@ final class ShortcutRadialView: NSView {
 
     private func drawLabel(_ string: String, at point: NSPoint, isActive: Bool) {
         let text = NSAttributedString(string: string, attributes: [
-            .font: NSFont.systemFont(ofSize: 18),
+            .font: NSFont.systemFont(ofSize: 15),
             .foregroundColor: isActive ? NSColor.white : NSColor.labelColor,
         ])
         let size = text.size()

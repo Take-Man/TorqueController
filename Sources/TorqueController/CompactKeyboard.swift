@@ -287,7 +287,7 @@ final class CompactKeyboard {
         // 中心は押した位置。今のカーソルの位置から移動量を引いて求める
         let location = NSEvent.mouseLocation
         let center = NSPoint(x: location.x - offset.dx, y: location.y - offset.dy)
-        let radius = ShortcutRadial.maxRadius(depth: radial.depth) + 2
+        let radius = radial.maxRadius + 2
         radialPanel.setFrame(NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2), display: true)
         radialPanel.orderFrontRegardless()
     }

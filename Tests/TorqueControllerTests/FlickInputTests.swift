@@ -125,6 +125,16 @@ import Testing
     #expect(composition.isEmpty)
 }
 
+@Test func directionWorksFarOutsideTheGuide() {
+    let from = { (dx: CGFloat, dy: CGFloat) in
+        FlickDirection.from(offset: CGVector(dx: dx, dy: dy), deadZone: FlickGuideView.innerRadius)
+    }
+    #expect(from(-3000, 200) == .left)
+    #expect(from(3000, 200) == .right)
+    #expect(from(100, 3000) == .up)
+    #expect(from(100, -3000) == .down)
+}
+
 @Test func directionFollowsLargerAxis() {
     let from = { (dx: CGFloat, dy: CGFloat) in
         FlickDirection.from(offset: CGVector(dx: dx, dy: dy), deadZone: 24)

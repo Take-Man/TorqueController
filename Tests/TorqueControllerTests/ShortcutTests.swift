@@ -86,6 +86,38 @@ private func shortcuts(_ texts: String...) -> [Shortcut] {
     }
 }
 
+@Test func radiusGrowsOneAndHalfTimesForTwoRings() {
+    let one = ShortcutRadial(origin: .command, shortcuts: shortcuts("command+c"))
+    let two = ShortcutRadial(origin: .command, shortcuts: shortcuts("command+c", "command+shift+3"))
+    #expect(one.maxRadius == ShortcutRadial.baseRadius)
+    #expect(two.maxRadius == ShortcutRadial.baseRadius * 1.5)
+    #expect(two.ringWidth < one.ringWidth)
+}
+
+@Test(arguments: [
+    CGVector(dx: 5000, dy: -800),
+    CGVector(dx: 0, dy: 5000),
+    CGVector(dx: 5000, dy: 100),
+    CGVector(dx: 300, dy: -4000),
+])
+func farOutsideTheCircleStillSelectsByDirection(offset: CGVector) {
+    let radial = ShortcutRadial(origin: .command, shortcuts: ShortcutStore.parse(Shortcut.defaults))
+    guard case .path(let path) = radial.selection(offset: offset), let last = path.last else {
+        Issue.record("項目を選べていない")
+        return
+    }
+    // 外側の段まで進むので、修飾キーの上で止まらず必ずショートカットに決まる
+    guard case .key = last.kind else {
+        Issue.record("ショートカットに決まっていない")
+        return
+    }
+}
+
+@Test func farLeftOfTheCircleStillCancels() {
+    let radial = ShortcutRadial(origin: .command, shortcuts: ShortcutStore.parse(Shortcut.defaults))
+    #expect(radial.selection(offset: CGVector(dx: -5000, dy: 100)) == .cancel)
+}
+
 @Test func keyOnFirstRingStaysSelectedFartherOut() {
     let radial = ShortcutRadial(origin: .command, shortcuts: shortcuts("command+c"))
     guard case .path(let path) = radial.selection(offset: CGVector(dx: 0, dy: 300)) else {

@@ -2,9 +2,9 @@ import AppKit
 
 /// フリックのガイド。押した位置を中心に、上下左右に区分した同心円を描く。
 final class FlickGuideView: NSView {
-    static let innerRadius: CGFloat = 24
-    static let outerRadius: CGFloat = 84
-    private static let labelRadius: CGFloat = 54
+    static let innerRadius: CGFloat = 20
+    static let outerRadius: CGFloat = ShortcutRadial.baseRadius
+    private static let labelRadius: CGFloat = 42
 
     var characters: FlickCharacters? {
         didSet { needsDisplay = true }
@@ -49,7 +49,7 @@ final class FlickGuideView: NSView {
 
     private func draw(_ string: String, at point: NSPoint, isActive: Bool) {
         let text = NSAttributedString(string: string, attributes: [
-            .font: NSFont.systemFont(ofSize: 22),
+            .font: NSFont.systemFont(ofSize: 18),
             .foregroundColor: isActive ? NSColor.white : NSColor.labelColor,
         ])
         let size = text.size()

@@ -114,8 +114,11 @@ enum ShortcutStore {
 /// 修飾キーからのドラッグで出す、階層型の同心円の配置。左側90度はキャンセルで、残り270度を、
 /// その先にあるショートカットの数に比例して割り当てる。位置は 0(左上の境界)から時計回りに 270(左下の境界)で表す。
 struct ShortcutRadial {
-    static let centerRadius: CGFloat = 26
-    static let ringWidth: CGFloat = 54
+    static let centerRadius: CGFloat = 18
+    /// 1段のときの全体の半径。フリックのガイドと同じ大きさ。
+    static let baseRadius: CGFloat = 64
+    /// 段が1つ増えるごとに、全体の半径を baseRadius のこの割合だけ広げる。2段で1.5倍になる。
+    private static let extraRadiusPerRing: CGFloat = 0.5
     static let span: CGFloat = 270
 
     struct Node: Equatable {
@@ -147,10 +150,17 @@ struct ShortcutRadial {
 
     let origin: Modifier
     let roots: [Node]
+    /// 外側まで開いたときの半径。
+    let maxRadius: CGFloat
+    /// 1段の幅。全ての段で同じ。
+    let ringWidth: CGFloat
 
     init(origin: Modifier, shortcuts: [Shortcut]) {
         self.origin = origin
         roots = Self.nodes(held: [origin], shortcuts: shortcuts, start: 0, span: Self.span, ring: 0)
+        let depth = max(1, Self.depth(of: roots))
+        maxRadius = Self.baseRadius * (1 + Self.extraRadiusPerRing * CGFloat(depth - 1))
+        ringWidth = (maxRadius - Self.centerRadius) / CGFloat(depth)
     }
 
     private static func nodes(held: Set<Modifier>, shortcuts: [Shortcut], start: CGFloat, span: CGFloat, ring: Int) -> [Node] {
@@ -180,14 +190,14 @@ struct ShortcutRadial {
         }
     }
 
-    /// 押した位置からの移動量で選ぶ。y は上が正。
+    /// 押した位置からの移動量で選ぶ。y は上が正。円の外でも、方向と段の数で必ずどれかに決まる。
     func selection(offset: CGVector) -> Selection {
         let distance = hypot(offset.dx, offset.dy)
         if distance < Self.centerRadius { return .center }
         let angle = atan2(offset.dy, offset.dx) * 180 / .pi
         guard abs(angle) < 135 else { return .cancel }
         let position = 135 - angle
-        let reach = Int((distance - Self.centerRadius) / Self.ringWidth)
+        let reach = Int((distance - Self.centerRadius) / ringWidth)
 
         var path: [Node] = []
         var nodes = roots
@@ -210,16 +220,8 @@ struct ShortcutRadial {
         return result
     }
 
-    /// 外側まで開いたときの半径。
-    static func maxRadius(depth: Int) -> CGFloat {
-        centerRadius + ringWidth * CGFloat(depth)
-    }
-
-    var depth: Int {
-        func depth(of nodes: [Node]) -> Int {
-            nodes.map { 1 + depth(of: $0.children) }.max() ?? 0
-        }
-        return depth(of: roots)
+    private static func depth(of nodes: [Node]) -> Int {
+        nodes.map { 1 + depth(of: $0.children) }.max() ?? 0
     }
 }
 

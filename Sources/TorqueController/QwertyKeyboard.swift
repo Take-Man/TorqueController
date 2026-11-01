@@ -89,6 +89,7 @@ final class QwertyKeyboard {
         // q の左の余白に持ち手を置く
         if let q = rows[1].first?.frame {
             let grip = GripView(frame: NSRect(x: Metrics.padding, y: q.minY, width: q.minX - Metrics.gap - Metrics.padding, height: q.height))
+            grip.isVertical = true
             background.addSubview(grip)
         }
 

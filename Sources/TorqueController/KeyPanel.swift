@@ -31,14 +31,19 @@ final class GripView: NSView {
     private static let dotDiameter: CGFloat = 3
     private static let dotSpacing: CGFloat = 7
 
+    /// true なら縦に長い配置(2列×3行)。false なら横に長い配置(3列×2行)。
+    var isVertical = false
+
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.tertiaryLabelColor.setFill()
-        for column in 0..<2 {
-            for row in 0..<3 {
-                let x = bounds.midX + (CGFloat(column) - 0.5) * Self.dotSpacing - Self.dotDiameter / 2
-                let y = bounds.midY + (CGFloat(row) - 1) * Self.dotSpacing - Self.dotDiameter / 2
+        let columns = isVertical ? 2 : 3
+        let rows = isVertical ? 3 : 2
+        for column in 0..<columns {
+            for row in 0..<rows {
+                let x = bounds.midX + (CGFloat(column) - CGFloat(columns - 1) / 2) * Self.dotSpacing - Self.dotDiameter / 2
+                let y = bounds.midY + (CGFloat(row) - CGFloat(rows - 1) / 2) * Self.dotSpacing - Self.dotDiameter / 2
                 NSBezierPath(ovalIn: NSRect(x: x, y: y, width: Self.dotDiameter, height: Self.dotDiameter)).fill()
             }
         }
@@ -105,6 +110,7 @@ final class KeyView: NSView {
     /// 押した位置からの移動量と、離した位置がキーの中かどうかを渡す。
     var onEnd: (@MainActor (CGVector, Bool) -> Void)?
 
+    private static let trackingInterval: TimeInterval = 1.0 / 60
     /// 不透明なパネルの上に重ねるので、不透明度を下げると明度が下がって見える。
     static let dimmedAlpha: CGFloat = 0.3
 
@@ -113,6 +119,7 @@ final class KeyView: NSView {
     }
     private var isTracking = false
     private var startLocation = NSPoint.zero
+    private var trackingTimer: Timer?
 
     init(label: String = "", symbolName: String? = nil) {
         self.label = label
@@ -127,26 +134,49 @@ final class KeyView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
+    /// カーソルがパネルの外へ出ても確実に追えるよう、イベントに加えて画面上の位置とボタンの状態を定期的に調べる。
     override func mouseDown(with event: NSEvent) {
-        guard isEnabled, let window else { return }
+        guard isEnabled else { return }
         isTracking = true
         isPressed = true
-        startLocation = event.locationInWindow
-        onBegin?(window.convertPoint(toScreen: startLocation))
+        clickCount = event.clickCount
+        startLocation = NSEvent.mouseLocation
+        onBegin?(startLocation)
+        let timer = Timer(timeInterval: Self.trackingInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if NSEvent.pressedMouseButtons & 1 == 0 {
+                    self.finishTracking()
+                } else {
+                    self.updateTracking()
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        trackingTimer = timer
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard isTracking else { return }
-        isPressed = keepsPressedOutside || contains(event)
-        onDrag?(offset(of: event))
+        updateTracking()
     }
 
     override func mouseUp(with event: NSEvent) {
+        finishTracking()
+    }
+
+    private func updateTracking() {
+        guard isTracking else { return }
+        isPressed = keepsPressedOutside || cursorIsInside
+        onDrag?(cursorOffset)
+    }
+
+    private func finishTracking() {
         guard isTracking else { return }
         isTracking = false
+        trackingTimer?.invalidate()
+        trackingTimer = nil
         isPressed = false
-        clickCount = event.clickCount
-        onEnd?(offset(of: event), contains(event))
+        onEnd?(cursorOffset, cursorIsInside)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -225,12 +255,15 @@ final class KeyView: NSView {
         }
     }
 
-    private func contains(_ event: NSEvent) -> Bool {
-        bounds.contains(convert(event.locationInWindow, from: nil))
+    private var cursorIsInside: Bool {
+        guard let window else { return false }
+        let inWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        return bounds.contains(convert(inWindow, from: nil))
     }
 
-    private func offset(of event: NSEvent) -> CGVector {
-        CGVector(dx: event.locationInWindow.x - startLocation.x, dy: event.locationInWindow.y - startLocation.y)
+    private var cursorOffset: CGVector {
+        let location = NSEvent.mouseLocation
+        return CGVector(dx: location.x - startLocation.x, dy: location.y - startLocation.y)
     }
 }
 

@@ -1,0 +1,26 @@
+#!/bin/sh
+# TorqueController.app をビルドして署名する。出力: .build/app/TorqueController.app
+set -eu
+cd "$(dirname "$0")/.."
+IDENTITY="TorqueController Local Signing"
+BUNDLE_ID="com.takeman.torquecontroller"
+APP=".build/app/TorqueController.app"
+
+swift build -c release --product TorqueController
+BIN="$(swift build -c release --show-bin-path)/TorqueController"
+
+pkill -x TorqueController || true
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS"
+cp App/Info.plist "$APP/Contents/Info.plist"
+cp "$BIN" "$APP/Contents/MacOS/TorqueController"
+
+if security find-identity -p codesigning | grep -q "\"$IDENTITY\""; then
+  codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" --timestamp=none "$APP"
+else
+  # アドホック署名は再ビルドのたびに同一性が変わり、アクセシビリティの許可が外れる
+  echo "警告: 証明書がないのでアドホック署名にします。scripts/create-signing-identity.sh を実行してください。" >&2
+  codesign --force --sign - --identifier "$BUNDLE_ID" --timestamp=none "$APP"
+fi
+codesign --verify --strict "$APP"
+echo "$APP"

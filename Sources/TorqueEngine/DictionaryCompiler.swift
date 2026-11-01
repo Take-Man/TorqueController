@@ -12,6 +12,8 @@ public enum DictionaryCompiler {
         }
     }
 
+    private static let functionalPrefixes = ["助詞,", "助動詞,", "動詞,接尾,", "動詞,非自立,"]
+
     private struct RawEntry {
         let leftID: UInt16
         let rightID: UInt16
@@ -116,7 +118,7 @@ public enum DictionaryCompiler {
         }
     }
 
-    /// 品詞が助詞または助動詞の ID を付属語とする。未知語には名詞の一般の ID を使う。
+    /// 助詞、助動詞、動詞の接尾・非自立の ID を付属語とする。未知語には名詞の一般の ID を使う。
     private static func parseFunctionalFlags(_ url: URL) throws -> (flags: [Bool], unknownID: Int) {
         let text = try String(contentsOf: url, encoding: .utf8)
         var flags: [Bool] = []
@@ -126,7 +128,7 @@ public enum DictionaryCompiler {
             guard parts.count == 2, Int(parts[0]) == flags.count else {
                 throw CompileError.malformed("id.def: \(line)")
             }
-            flags.append(parts[1].hasPrefix("助詞,") || parts[1].hasPrefix("助動詞,"))
+            flags.append(functionalPrefixes.contains { parts[1].hasPrefix($0) })
             if unknownID == nil, parts[1].hasPrefix("名詞,一般,") {
                 unknownID = flags.count - 1
             }

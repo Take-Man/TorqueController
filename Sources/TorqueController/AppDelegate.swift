@@ -1,11 +1,13 @@
 import AppKit
 import Carbon
+import TorqueEngine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var keyboard: FlickKeyboard?
     private var permissionTimer: Timer?
+    private var isDictionaryLoaded = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let menu = NSMenu()
@@ -13,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         statusItem.menu = menu
 
-        keyboard = FlickKeyboard()
+        keyboard = FlickKeyboard(converter: loadConverter(), learningURL: LearningModel.defaultURL)
         keyboard?.show()
 
         // 未許可なら、初回だけ macOS の許可ダイアログを出す
@@ -27,10 +29,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func loadConverter() -> Converter? {
+        guard let url = Bundle.main.url(forResource: "torque", withExtension: "dict"),
+              let dictionary = try? TorqueDictionary(contentsOf: url)
+        else { return nil }
+        isDictionaryLoaded = true
+        return Converter(dictionary: dictionary, learning: loadLearning())
+    }
+
+    /// 壊れた学習ファイルは上書きせず、別名で残して空から始める。
+    private func loadLearning() -> LearningModel {
+        let url = LearningModel.defaultURL
+        guard FileManager.default.fileExists(atPath: url.path) else { return LearningModel() }
+        do {
+            return try LearningModel.load(from: url)
+        } catch {
+            NSLog("学習ファイルを読めません: %@", String(describing: error))
+            try? FileManager.default.moveItem(at: url, to: url.appendingPathExtension("broken"))
+            return LearningModel()
+        }
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let trusted = AXIsProcessTrusted()
         addInfoItem(to: menu, "アクセシビリティ: \(trusted ? "許可済み" : "未許可")")
+        addInfoItem(to: menu, "辞書: \(isDictionaryLoaded ? "読み込み済み" : "読み込めません(変換は使えません)")")
         addInfoItem(to: menu, "セキュア入力: \(IsSecureEventInputEnabled() ? "有効" : "無効")")
         menu.addItem(.separator())
         if !trusted {

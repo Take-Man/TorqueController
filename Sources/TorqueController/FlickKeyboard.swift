@@ -1,67 +1,116 @@
 import AppKit
+import TorqueEngine
 
-/// フリックのキーボード。パネル、ガイド、未確定文字列を持ち、キーの操作を入力に変える。
+/// フリックのキーボード。パネル、ガイド、未確定文字列、変換を持ち、キーの操作を入力に変える。
 @MainActor
 final class FlickKeyboard {
+    /// パネルの重なり順。同じレベルだとクリックしたパネルが前面に来るので、レベルで固定する。
+    private enum Levels {
+        static let keyboard = NSWindow.Level.statusBar
+        static let composition = NSWindow.Level(rawValue: keyboard.rawValue + 1)
+        static let overlay = NSWindow.Level(rawValue: keyboard.rawValue + 2)
+        static let guide = NSWindow.Level(rawValue: keyboard.rawValue + 3)
+    }
+
     private enum Metrics {
         static let keySide: CGFloat = 56
         static let sideKeyWidth: CGFloat = 44
         static let gap: CGFloat = 6
         static let padding: CGFloat = 8
-        static let compositionHeight: CGFloat = 40
         static let rows = 4
         static let gridColumns = 3
         /// ガイドの下の区画の文字が画面の下端で切れないよう、パネルを画面下端から離す距離。
         static let minScreenBottomMargin: CGFloat = 60
         static let screenMargin: CGFloat = 16
+        /// スコープの文字列と中心の円の間の余白。
+        static let scopePadding: CGFloat = 6
+        static let minScopeRadius: CGFloat = 26
+        /// 候補の上にカーソルがあるかを調べる間隔。
+        static let cursorTrackingInterval: TimeInterval = 0.03
+        static let modeSlideDuration: TimeInterval = 0.18
+        static let compositionToggleDuration: TimeInterval = 0.2
     }
 
     private let panel: KeyPanel
     private let guidePanel: KeyPanel
     private let guideView = FlickGuideView()
+    private let compositionPanel: KeyPanel
     private let compositionView = CompositionView()
     private var gridViews: [KeyView] = []
     private var modeViews: [InputMode: KeyView] = [:]
-    private let deleteView = KeyView(symbolName: "delete.left")
-    private let spaceView = KeyView(symbolName: "space")
+    private let modeBackgroundView = ModeBackgroundView()
+    private let modeHighlightView = NSView()
+    private let deleteView = KeyView(symbolName: FlickKeyboard.deleteSymbol)
+    private let spaceView = KeyView(symbolName: FlickKeyboard.spaceSymbol)
     private let enterView = KeyView(symbolName: FlickKeyboard.enterSymbol)
 
+    private static let deleteSymbol = "delete.left"
+    private static let clearSymbol = "trash"
+    private static let spaceSymbol = "space"
+    private static let convertSymbol = "arrow.triangle.2.circlepath"
     private static let enterSymbol = "return"
+    private static let sendSymbol = "paperplane"
 
     private var composition = Composition()
     private var mode = InputMode.kana
     private var shift = ShiftState.off
+    private var isEnabled = true
+
+    private var converter: Converter?
+    private let learningURL: URL
+    private let overlayPanel: KeyPanel
+    private let overlayView = CandidateOverlayView()
+    /// 変換中の状態。変換していないときは nil。
+    private var session: ConversionSession?
+    private var cursorTimer: Timer?
+
+    private var deleteRepeatTimer: Timer?
+    /// 長押しで1文字でも消したら、離したときのクリックとして扱わない。
+    private var deleteHasRepeated = false
+    /// 全削除の位置まで一度でも動かしたら、離したときのクリックとして扱わない。
+    private var deleteHasDragged = false
+    private var isConverting: Bool { session != nil }
 
     /// 今の入力モードとシフトの状態で表示するキー。
     private var grid: [GridKey] {
         shift == .off ? mode.grid : mode.grid.map(\.uppercased)
     }
 
-    init() {
+    init(converter: Converter?, learningURL: URL) {
+        self.converter = converter
+        self.learningURL = learningURL
+        overlayPanel = KeyPanel(contentRect: NSScreen.main?.frame ?? .zero)
+        overlayPanel.level = Levels.overlay
+        overlayPanel.hasShadow = false
+        overlayPanel.contentView = overlayView
         let gridHeight = CGFloat(Metrics.rows) * Metrics.keySide + CGFloat(Metrics.rows - 1) * Metrics.gap
         let contentWidth = Metrics.sideKeyWidth * 2 + CGFloat(Metrics.gridColumns) * Metrics.keySide + CGFloat(Metrics.gridColumns + 1) * Metrics.gap
         let size = NSSize(
             width: contentWidth + Metrics.padding * 2,
-            height: gridHeight + Metrics.compositionHeight + Metrics.gap + Metrics.padding * 2
+            height: gridHeight + Metrics.padding * 2
         )
         panel = KeyPanel(contentRect: NSRect(origin: Self.initialOrigin(), size: size))
+        panel.level = Levels.keyboard
 
         let guideSide = (FlickGuideView.outerRadius + 2) * 2
         guidePanel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: guideSide, height: guideSide))
-        guidePanel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        guidePanel.level = Levels.guide
         guidePanel.ignoresMouseEvents = true
         guidePanel.contentView = guideView
 
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
 
-        compositionView.frame = NSRect(
-            x: Metrics.padding,
-            y: Metrics.padding + gridHeight + Metrics.gap,
-            width: contentWidth,
-            height: Metrics.compositionHeight
-        )
-        background.addSubview(compositionView)
+        compositionPanel = KeyPanel(contentRect: .zero)
+        compositionPanel.level = Levels.composition
+        compositionPanel.hasShadow = false
+        compositionPanel.contentView = compositionView
+        compositionView.onClick = { [weak self] in self?.compositionClicked() }
+        compositionView.onExpandChange = { [weak self] isExpanded in
+            self?.compositionView.isExpanded = isExpanded
+            self?.animateCompositionPanel()
+        }
+        overlayView.onRegionClicked = { [weak self] region in self?.overlayClicked(region) }
 
         layoutGrid(in: background, gridHeight: gridHeight)
         layoutSideColumns(in: background, gridHeight: gridHeight)
@@ -73,9 +122,23 @@ final class FlickKeyboard {
     }
 
     func setEnabled(_ isEnabled: Bool) {
-        for view in gridViews + Array(modeViews.values) + [deleteView, spaceView, enterView] {
+        self.isEnabled = isEnabled
+        applyEnabled()
+    }
+
+    /// 変換中は、文字のキーと切替キーを無効にして明度を下げる。
+    private func applyEnabled() {
+        for view in gridViews + Array(modeViews.values) {
+            view.isEnabled = isEnabled && !isConverting
+            view.isDimmed = isConverting
+        }
+        modeBackgroundView.isDimmed = isConverting
+        modeHighlightView.alphaValue = isConverting ? KeyView.dimmedAlpha : 1
+        for view in [deleteView, spaceView, enterView] {
             view.isEnabled = isEnabled
         }
+        deleteView.keepsPressedOutside = !isConverting
+        deleteView.symbolName = isConverting ? CandidateOverlayView.backSymbol : Self.deleteSymbol
     }
 
     private static func initialOrigin() -> NSPoint {
@@ -122,27 +185,40 @@ final class FlickKeyboard {
             )
         }
 
+        modeBackgroundView.frame = background.bounds
+        modeBackgroundView.keyFrames = InputMode.allCases.indices.map { frame(x: leftX, position: $0) }
+        background.addSubview(modeBackgroundView)
+        modeHighlightView.wantsLayer = true
+        modeHighlightView.layer?.cornerRadius = 8
+        modeHighlightView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        modeHighlightView.frame = frame(x: leftX, position: 0)
+        background.addSubview(modeHighlightView)
+
         for (position, mode) in InputMode.allCases.enumerated() {
             let view = KeyView(label: mode.label)
+            view.fillsBackground = false
             view.frame = frame(x: leftX, position: position)
             view.onEnd = { [weak self] _, isInside in
                 if isInside {
-                    self?.mode = mode
-                    self?.shift = .off
-                    self?.applyMode()
+                    self?.switchMode(to: mode)
                 }
             }
             background.addSubview(view)
             modeViews[mode] = view
         }
 
+        deleteView.frame = frame(x: rightX, position: 0)
+        deleteView.onBegin = { [weak self] _ in self?.deleteBegan() }
+        deleteView.onDrag = { [weak self] offset in self?.deleteDragged(offset) }
+        deleteView.onEnd = { [weak self] offset, isInside in self?.deleteEnded(offset, isInside: isInside) }
+        background.addSubview(deleteView)
+
         let actions: [(KeyView, @MainActor () -> Void)] = [
-            (deleteView, { [weak self] in self?.deletePressed() }),
             (spaceView, { [weak self] in self?.spacePressed() }),
             (enterView, { [weak self] in self?.enterPressed() }),
         ]
         for (position, (view, action)) in actions.enumerated() {
-            view.frame = frame(x: rightX, position: position)
+            view.frame = frame(x: rightX, position: position + 1)
             view.onEnd = { _, isInside in
                 if isInside {
                     action()
@@ -175,6 +251,13 @@ final class FlickKeyboard {
         for (mode, view) in modeViews {
             view.isSelected = mode == self.mode
         }
+        if let target = modeViews[mode]?.frame, modeHighlightView.frame != target {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Metrics.modeSlideDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                modeHighlightView.animator().frame = target
+            }
+        }
     }
 
     // MARK: - フリック
@@ -199,7 +282,11 @@ final class FlickKeyboard {
             guidePanel.orderOut(nil)
             let direction = FlickDirection.from(offset: offset, deadZone: FlickGuideView.innerRadius)
             if let character = characters.character(in: direction) {
-                composition.append(character)
+                if mode == .kana {
+                    composition.appendPending(character)
+                } else {
+                    composition.appendConfirmed(character)
+                }
                 compositionChanged()
                 shift = shift.afterInput
                 applyMode()
@@ -219,7 +306,19 @@ final class FlickKeyboard {
 
     // MARK: - 機能キー
 
-    private func deletePressed() {
+    /// 数字記号と英字には変換がないので、切り替えた時点で未確定のかなをかなのまま確定にする。
+    private func switchMode(to mode: InputMode) {
+        self.mode = mode
+        shift = .off
+        if mode != .kana {
+            composition.confirmPending()
+            compositionChanged()
+        }
+        applyMode()
+    }
+
+    /// 入力欄に文字があれば末尾を消し、なければ対象アプリへ Delete キーを送る。
+    private func deleteOne() {
         if composition.isEmpty {
             TextSender.send(.delete)
         } else {
@@ -228,26 +327,237 @@ final class FlickKeyboard {
         }
     }
 
-    /// 未確定文字列があるときの空白キーは変換の開始に使うので、ここでは空白を入れない。
-    private func spacePressed() {
-        if composition.isEmpty {
-            TextSender.send(" ")
+    /// 長押しの連続削除を準備する。欄の文字から始めたら、欄が空になった時点で止めて、対象アプリの文字までは消さない。
+    private func deleteBegan() {
+        guard !isConverting else { return }
+        deleteHasRepeated = false
+        deleteHasDragged = false
+        let startedWithText = !composition.isEmpty
+        let timer = Timer(
+            fire: Date().addingTimeInterval(DeleteGesture.repeatDelay),
+            interval: DeleteGesture.repeatInterval,
+            repeats: true
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // 離すイベントを受け取れなかったときも、押し続けの状態を残さない
+                guard NSEvent.pressedMouseButtons & 1 != 0, !(startedWithText && self.composition.isEmpty) else {
+                    self.stopDeleteRepeat()
+                    return
+                }
+                self.deleteHasRepeated = true
+                self.deleteOne()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        deleteRepeatTimer = timer
+    }
+
+    private func deleteDragged(_ offset: CGVector) {
+        guard !isConverting else { return }
+        let isClear = DeleteGesture.isClear(offset: offset) && !composition.isEmpty
+        if isClear {
+            deleteHasDragged = true
+            stopDeleteRepeat()
+        }
+        deleteView.symbolName = isClear ? Self.clearSymbol : Self.deleteSymbol
+    }
+
+    /// 変換中はクリックだけを受け、戻す領域と同じ働きをする。
+    private func deleteEnded(_ offset: CGVector, isInside: Bool) {
+        stopDeleteRepeat()
+        if isConverting {
+            if isInside {
+                overlayClicked(.back)
+            }
+            return
+        }
+        deleteView.symbolName = Self.deleteSymbol
+        if DeleteGesture.isClear(offset: offset) {
+            composition.clear()
+            compositionChanged()
+        } else if isInside, !deleteHasRepeated, !deleteHasDragged {
+            deleteOne()
         }
     }
 
-    private func enterPressed() {
-        if composition.isEmpty {
-            TextSender.send(.enter)
+    private func stopDeleteRepeat() {
+        deleteRepeatTimer?.invalidate()
+        deleteRepeatTimer = nil
+    }
+
+    /// 変換中なら変換を抜ける。未確定のかながあれば変換を始める。入力欄に文字があるときの空白は、順序を保つため欄に入れる。
+    private func spacePressed() {
+        if isConverting {
+            finishConversion()
+        } else if !composition.pending.isEmpty {
+            startConversion()
+        } else if composition.isEmpty {
+            TextSender.send(" ")
         } else {
-            TextSender.send(composition.text)
-            composition.clear()
+            composition.appendConfirmed(" ")
             compositionChanged()
         }
     }
 
+    private func enterPressed() {
+        finishConversion()
+        if composition.isEmpty {
+            TextSender.send(.enter)
+        } else {
+            sendComposition()
+        }
+    }
+
+    private func sendComposition() {
+        TextSender.send(composition.text)
+        composition.clear()
+        compositionChanged()
+    }
+
     private func compositionChanged() {
-        compositionView.text = composition.text
-        enterView.symbolName = composition.isEmpty ? Self.enterSymbol : nil
-        enterView.label = composition.isEmpty ? "" : "確定"
+        enterView.symbolName = composition.isEmpty ? Self.enterSymbol : Self.sendSymbol
+        spaceView.symbolName = composition.pending.isEmpty ? Self.spaceSymbol : Self.convertSymbol
+        showSession()
+    }
+
+    // MARK: - 変換
+
+    private func startConversion() {
+        guard let converter, !composition.pending.isEmpty else { return }
+        session = ConversionSession(reading: composition.pending) { converter.columns(for: $0) }
+        applyEnabled()
+        showSession(animated: true)
+        cursorTimer = Timer.scheduledTimer(withTimeInterval: Metrics.cursorTrackingInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.trackCursor() }
+        }
+    }
+
+    /// 変換を抜ける。選んだ分は確定にして残し、残りの読みは未確定のかなに戻す。
+    private func finishConversion() {
+        guard let session else { return }
+        composition.applyConversion(converted: session.convertedText, remaining: session.remaining)
+        recordLearning(session.selections)
+        self.session = nil
+        cursorTimer?.invalidate()
+        cursorTimer = nil
+        applyEnabled()
+        compositionChanged()
+    }
+
+    private func recordLearning(_ selections: [ConversionSession.Selection]) {
+        guard !selections.isEmpty else { return }
+        for selection in selections {
+            converter?.learning.record(reading: selection.reading, surface: selection.surface)
+        }
+        do {
+            try converter?.learning.save(to: learningURL)
+        } catch {
+            NSLog("学習を保存できません: %@", String(describing: error))
+        }
+    }
+
+    private func compositionClicked() {
+        if isConverting {
+            finishConversion()
+        } else {
+            startConversion()
+        }
+    }
+
+    private func overlayClicked(_ region: CandidateLayout.Region) {
+        guard var session else { return }
+        var animated = true
+        switch region {
+        case .candidate(let column, let row):
+            let candidates = Array(session.visibleCandidates(column: column))
+            session.select(column: column, candidate: candidates[row])
+        case .next(let column):
+            session.nextPage(column: column)
+            animated = false
+        case .center:
+            finishConversion()
+            return
+        case .back:
+            guard session.undo() else {
+                finishConversion()
+                return
+            }
+        }
+        self.session = session
+        if session.isFinished {
+            finishConversion()
+            sendComposition()
+        } else {
+            showSession(animated: animated)
+        }
+    }
+
+    /// 候補や中心の上でだけクリックを受け、それ以外は下のキーやアプリへ通す。
+    private func trackCursor() {
+        let location = NSEvent.mouseLocation
+        let point = CGPoint(x: location.x - overlayPanel.frame.minX, y: location.y - overlayPanel.frame.minY)
+        overlayPanel.ignoresMouseEvents = overlayView.trackCursor(at: point) == nil
+    }
+
+    /// 入力欄の表示と、候補の重ね表示を今の状態に合わせる。
+    private func showSession(animated: Bool = false) {
+        compositionView.confirmedText = composition.confirmed + (session?.convertedText ?? "")
+        compositionView.pendingText = session?.remaining ?? composition.pending
+        compositionView.underlinesPending = isConverting
+        showCompositionPanel()
+        guard let session, let reading = session.columns.first?.reading else {
+            overlayPanel.orderOut(nil)
+            return
+        }
+
+        if let screen = panel.screen ?? NSScreen.main {
+            overlayPanel.setFrame(screen.frame, display: false)
+            overlayView.frame = NSRect(origin: .zero, size: screen.frame.size)
+        }
+        let scope = overlayRect(of: compositionView, rect: compositionView.pendingRect(count: reading.count))
+        overlayView.update(
+            session: session,
+            center: CGPoint(x: scope.midX, y: scope.midY),
+            scopeRadius: max(Metrics.minScopeRadius, hypot(scope.width, scope.height) / 2 + Metrics.scopePadding),
+            animated: animated
+        )
+        overlayPanel.orderFrontRegardless()
+        trackCursor()
+    }
+
+    /// 入力欄は文字があるときだけ、文字の背景となる最小の幅で、キーボードの上に左揃えで出す。
+    private func showCompositionPanel() {
+        guard !composition.isEmpty || isConverting else {
+            compositionView.isExpanded = false
+            compositionPanel.orderOut(nil)
+            return
+        }
+        compositionPanel.setFrame(compositionPanelFrame, display: true)
+        compositionPanel.orderFrontRegardless()
+    }
+
+    private var compositionPanelFrame: NSRect {
+        let size = compositionView.fittingSize(maxFieldWidth: panel.frame.width - CompositionView.margin * 2)
+        let origin = NSPoint(x: panel.frame.minX, y: panel.frame.maxY - CompositionView.overlap)
+        return NSRect(origin: origin, size: size)
+    }
+
+    /// 開閉のマークのクリックで、入力欄をなめらかに開閉する。候補の位置は開閉が終わってから合わせる。
+    private func animateCompositionPanel() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Metrics.compositionToggleDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            compositionPanel.animator().setFrame(compositionPanelFrame, display: true)
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated { self?.showSession() }
+        }
+    }
+
+    /// パネルの中の範囲を、重ね表示の座標に変換する。
+    private func overlayRect(of view: NSView, rect: CGRect) -> CGRect {
+        let inWindow = view.convert(rect, to: nil)
+        let onScreen = (view.window ?? panel).convertToScreen(inWindow)
+        return onScreen.offsetBy(dx: -overlayPanel.frame.minX, dy: -overlayPanel.frame.minY)
     }
 }

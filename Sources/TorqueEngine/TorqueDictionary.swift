@@ -55,6 +55,8 @@ public final class TorqueDictionary: @unchecked Sendable {
 
         let base = UnsafeRawPointer(mapped)
         let size = Int(status.st_size)
+        // 最初の変換が遅くならないよう、先に読み込みを始めてもらう
+        madvise(mapped, size, MADV_WILLNEED)
         let header = { (index: Int) in base.loadUnaligned(fromByteOffset: index * 4, as: UInt32.self).littleEndian }
         let readingCount = Int(header(1))
         let entryCount = Int(header(2))

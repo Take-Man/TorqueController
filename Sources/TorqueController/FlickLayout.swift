@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 enum FlickDirection: CaseIterable {
     case left, up, right, down
@@ -87,6 +88,18 @@ enum ShiftState {
         case .once: "shift.fill"
         case .locked: "capslock.fill"
         }
+    }
+}
+
+/// 削除キーの操作。
+enum DeleteGesture {
+    static let repeatDelay: TimeInterval = 0.4
+    static let repeatInterval: TimeInterval = 0.06
+    /// これより左へドラッグして離すと全削除。
+    static let clearDistance: CGFloat = 30
+
+    static func isClear(offset: CGVector) -> Bool {
+        offset.dx <= -clearDistance
     }
 }
 

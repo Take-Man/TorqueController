@@ -130,6 +130,13 @@ private let realDictionaryURL = URL(fileURLWithPath: #filePath)
     .appendingPathComponent(".build/dictionary/torque.dict")
 
 @Test(.enabled(if: FileManager.default.fileExists(atPath: realDictionaryURL.path)))
+func verbSuffixAndAuxiliaryVerbStayInBunsetsu() throws {
+    let columns = Converter(dictionary: try TorqueDictionary(contentsOf: realDictionaryURL)).columns(for: "たべられている")
+    #expect(columns.first?.reading == "たべられている")
+    #expect(columns.first?.candidates.map(\.surface).contains("食べられている") == true)
+}
+
+@Test(.enabled(if: FileManager.default.fileExists(atPath: realDictionaryURL.path)))
 func realDictionaryProducesDesignedColumnOrder() throws {
     let columns = Converter(dictionary: try TorqueDictionary(contentsOf: realDictionaryURL)).columns(for: "こんばんには")
     #expect(Array(columns.map(\.reading).prefix(4)) == ["こんばんには", "こんばんに", "こんばん", "こんば"])

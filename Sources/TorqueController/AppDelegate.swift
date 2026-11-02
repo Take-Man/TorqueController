@@ -97,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyFocusPolicy() {
         let isSecure = focusPolicy.kind == .secure
         // 隠すときの変換の終了で記録しないよう、先に切り替える
-        flickPanel?.isLearningEnabled = !isSecure
+        flickPanel?.setSecureFocused(isSecure)
         flickPanel?.setVisible(arePanelsVisible && focusPolicy.flickVisible)
         compactPanel?.setFlickVisible(focusPolicy.flickVisible)
         compactPanel?.setSecureFocused(isSecure)

@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 @testable import TorqueController
 
@@ -131,4 +132,118 @@ private func classify(_ role: String?, _ subrole: String? = nil, settable: Bool 
     _ = policy.observe(kind: .none, elementChanged: true)
     _ = policy.observe(kind: .none, elementChanged: false)
     #expect(!policy.flickVisible)
+}
+
+/// 送信を記録する、パスワード欄の切り替えの確認用のパネル。
+@MainActor
+private final class FlickProbe {
+    let panel = FlickPanel(origin: .zero, converter: nil, learningURL: URL(fileURLWithPath: "/dev/null"))
+    var sentText: [String] = []
+    var sentKeys: [TextSender.Key] = []
+
+    init() {
+        panel.sendText = { [unowned self] in self.sentText.append($0) }
+        panel.sendKey = { [unowned self] in self.sentKeys.append($0) }
+    }
+
+    var keys: [KeyView] {
+        panel.panel.contentView?.subviews.compactMap { $0 as? KeyView } ?? []
+    }
+
+    func key(_ label: String) -> KeyView? {
+        keys.first { $0.label == label }
+    }
+
+    func key(symbol: String) -> KeyView? {
+        keys.first { $0.symbolName == symbol }
+    }
+
+    func click(_ view: KeyView?) {
+        view?.onEnd?(.zero, true)
+    }
+}
+
+@MainActor @Test func normalFieldStillGoesThroughComposition() {
+    let probe = FlickProbe()
+    probe.click(probe.key("あ"))
+    #expect(probe.panel.fieldText == "あ")
+    probe.click(probe.key("ABC"))
+    probe.click(probe.key("abc"))
+    #expect(probe.panel.fieldText == "あa")
+    #expect(probe.sentText.isEmpty)
+    probe.click(probe.key(symbol: "paperplane"))
+    #expect(probe.sentText == ["あa"])
+    #expect(probe.panel.fieldText.isEmpty)
+}
+
+@MainActor @Test func passwordFieldSendsCharactersDirectly() {
+    let probe = FlickProbe()
+    probe.panel.setSecureFocused(true)
+    probe.click(probe.key("abc"))
+    probe.click(probe.key("123"))
+    probe.click(probe.key("1"))
+    #expect(probe.sentText == ["a", "1"])
+    #expect(probe.panel.fieldText.isEmpty)
+}
+
+@MainActor @Test func passwordFieldSendsFunctionKeysDirectly() {
+    let probe = FlickProbe()
+    probe.click(probe.key("あ"))
+    probe.panel.setSecureFocused(true)
+    probe.click(probe.key(symbol: "delete.left"))
+    probe.click(probe.key(symbol: "space"))
+    probe.click(probe.key(symbol: "return"))
+    #expect(probe.sentKeys == [.delete, .enter])
+    #expect(probe.sentText == [" "])
+    // 入力欄に残っていた文字には触らない
+    #expect(probe.panel.fieldText == "あ")
+}
+
+@MainActor @Test func leftoverTextIsNeitherSentNorChanged() {
+    let probe = FlickProbe()
+    probe.click(probe.key("か"))
+    probe.panel.setSecureFocused(true)
+    #expect(probe.sentText.isEmpty)
+    #expect(probe.panel.fieldText == "か")
+    // 全削除のドラッグも働かない
+    probe.key(symbol: "delete.left")?.onEnd?(CGVector(dx: -200, dy: 0), false)
+    #expect(probe.panel.fieldText == "か")
+    // 123 と ABC の切り替えで確定もしない。抜ければ、かなの未確定のまま続けられる
+    probe.click(probe.key("123"))
+    probe.panel.setSecureFocused(false)
+    #expect(probe.panel.fieldText == "か")
+    probe.click(probe.key("かな"))
+    probe.click(probe.key("小゛゜"))
+    #expect(probe.panel.fieldText == "が")
+}
+
+@MainActor @Test func kanaSwitchesToLatinAndKanaKeyIsDisabled() {
+    let probe = FlickProbe()
+    probe.panel.setSecureFocused(true)
+    #expect(probe.key("abc") != nil)
+    #expect(probe.key("あ") == nil)
+    #expect(probe.key("かな")?.isEnabled == false)
+    #expect(probe.key("かな")?.isDimmed == true)
+    #expect(probe.key("ABC")?.isEnabled == true)
+}
+
+@MainActor @Test func leavingPasswordFieldRestoresNormalBehavior() {
+    let probe = FlickProbe()
+    probe.panel.setSecureFocused(true)
+    probe.panel.setSecureFocused(false)
+    #expect(probe.key("あ") != nil)
+    #expect(probe.key("かな")?.isEnabled == true)
+    #expect(probe.key("かな")?.isDimmed == false)
+    probe.click(probe.key("あ"))
+    #expect(probe.panel.fieldText == "あ")
+    #expect(probe.sentText.isEmpty)
+}
+
+@MainActor @Test func manualModeIsKeptAfterLeavingPasswordField() {
+    let probe = FlickProbe()
+    probe.click(probe.key("123"))
+    probe.panel.setSecureFocused(true)
+    #expect(probe.key("1") != nil)
+    probe.panel.setSecureFocused(false)
+    #expect(probe.key("1") != nil)
 }

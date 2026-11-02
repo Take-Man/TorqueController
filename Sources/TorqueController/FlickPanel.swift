@@ -42,7 +42,7 @@ final class FlickPanel {
         didSet { showSession() }
     }
 
-    private let panel: FloatingPanel
+    let panel: FloatingPanel
     private let logicalSize: NSSize
     private var scale: CGFloat = 1
     private let guidePanel: FloatingPanel
@@ -68,8 +68,15 @@ final class FlickPanel {
     private var mode = InputMode.kana
     private var shift = LatchState.off
     private var isEnabled = true
-    /// パスワード欄にフォーカスがある間は、学習に記録しない。
-    var isLearningEnabled = true
+    /// パスワード欄にフォーカスがある間は、入力欄に平文を出さず対象アプリへ直接送り、学習にも記録しない。
+    private(set) var isSecureFocused = false
+    /// パスワード欄に入るときに、かなから自動で切り替えたか。抜けるときに戻す。
+    private var switchedFromKana = false
+    /// 対象アプリへの送信。テストで差し替える。
+    var sendText: (String) -> Void = { TextSender.send($0) }
+    var sendKey: (TextSender.Key) -> Void = { TextSender.send($0) }
+    /// 入力欄の文字列。
+    var fieldText: String { composition.text }
 
     private var converter: Converter?
     private let learningURL: URL
@@ -168,11 +175,36 @@ final class FlickPanel {
         applyEnabled()
     }
 
+    /// パスワード欄に入ったら変換を抜け、かななら ABC に切り替える。入力欄に残っている文字は送らず、そのまま残す。
+    /// 抜けたら通常の挙動に戻す。
+    func setSecureFocused(_ isSecureFocused: Bool) {
+        guard isSecureFocused != self.isSecureFocused else { return }
+        self.isSecureFocused = isSecureFocused
+        if isSecureFocused {
+            finishConversion()
+            if mode == .kana {
+                mode = .latin
+                switchedFromKana = true
+            }
+        } else if switchedFromKana {
+            mode = .kana
+            switchedFromKana = false
+        }
+        shift = .off
+        applyMode()
+        applyEnabled()
+        compositionChanged()
+    }
+
     /// 変換中は、文字のキーと切替キーを無効にして明度を下げる。
     private func applyEnabled() {
         for view in gridViews + Array(modeViews.values) {
             view.isEnabled = isEnabled && !isConverting
             view.isDimmed = isConverting
+        }
+        if isSecureFocused, let kanaView = modeViews[.kana] {
+            kanaView.isEnabled = false
+            kanaView.isDimmed = true
         }
         modeBackgroundView.isDimmed = isConverting
         modeHighlightView.alphaValue = isConverting ? KeyView.dimmedAlpha : 1
@@ -366,7 +398,9 @@ final class FlickPanel {
             guidePanel.orderOut(nil)
             let direction = FlickDirection.from(offset: normalized(offset), deadZone: FlickGuideView.innerRadius)
             if let character = characters.character(in: direction) {
-                if mode == .kana {
+                if isSecureFocused {
+                    sendText(character)
+                } else if mode == .kana {
                     composition.appendPending(character)
                 } else {
                     composition.appendConfirmed(character)
@@ -394,7 +428,9 @@ final class FlickPanel {
     private func switchMode(to mode: InputMode) {
         self.mode = mode
         shift = .off
-        if mode != .kana {
+        switchedFromKana = false
+        // パスワード欄では入力欄を使わないので、残っている文字はそのままにする
+        if mode != .kana, !isSecureFocused {
             composition.confirmPending()
             compositionChanged()
         }
@@ -403,8 +439,8 @@ final class FlickPanel {
 
     /// 入力欄に文字があれば末尾を消し、なければ対象アプリへ Delete キーを送る。
     private func deleteOne() {
-        if composition.isEmpty {
-            TextSender.send(.delete)
+        if composition.isEmpty || isSecureFocused {
+            sendKey(.delete)
         } else {
             composition.deleteLast()
             compositionChanged()
@@ -416,7 +452,7 @@ final class FlickPanel {
         guard !isConverting else { return }
         deleteHasRepeated = false
         deleteHasDragged = false
-        let startedWithText = !composition.isEmpty
+        let startedWithText = !composition.isEmpty && !isSecureFocused
         let timer = Timer(
             fire: Date().addingTimeInterval(DeleteGesture.repeatDelay),
             interval: DeleteGesture.repeatInterval,
@@ -439,7 +475,7 @@ final class FlickPanel {
 
     private func deleteDragged(_ offset: CGVector) {
         guard !isConverting else { return }
-        let isClear = DeleteGesture.isClear(offset: normalized(offset)) && !composition.isEmpty
+        let isClear = DeleteGesture.isClear(offset: normalized(offset)) && !composition.isEmpty && !isSecureFocused
         if isClear {
             deleteHasDragged = true
             stopDeleteRepeat()
@@ -458,6 +494,7 @@ final class FlickPanel {
         }
         deleteView.symbolName = Self.deleteSymbol
         if DeleteGesture.isClear(offset: normalized(offset)) {
+            guard !isSecureFocused else { return }
             composition.clear()
             compositionChanged()
         } else if isInside, !deleteHasRepeated, !deleteHasDragged {
@@ -474,10 +511,12 @@ final class FlickPanel {
     private func spacePressed() {
         if isConverting {
             finishConversion()
+        } else if isSecureFocused {
+            sendText(" ")
         } else if !composition.pending.isEmpty {
             startConversion()
         } else if composition.isEmpty {
-            TextSender.send(" ")
+            sendText(" ")
         } else {
             composition.appendConfirmed(" ")
             compositionChanged()
@@ -486,29 +525,29 @@ final class FlickPanel {
 
     private func enterPressed() {
         finishConversion()
-        if composition.isEmpty {
-            TextSender.send(.enter)
+        if composition.isEmpty || isSecureFocused {
+            sendKey(.enter)
         } else {
             sendComposition()
         }
     }
 
     private func sendComposition() {
-        TextSender.send(composition.text)
+        sendText(composition.text)
         composition.clear()
         compositionChanged()
     }
 
     private func compositionChanged() {
-        enterView.symbolName = composition.isEmpty ? Self.enterSymbol : Self.sendSymbol
-        spaceView.symbolName = composition.pending.isEmpty ? Self.spaceSymbol : Self.convertSymbol
+        enterView.symbolName = composition.isEmpty || isSecureFocused ? Self.enterSymbol : Self.sendSymbol
+        spaceView.symbolName = composition.pending.isEmpty || isSecureFocused ? Self.spaceSymbol : Self.convertSymbol
         showSession()
     }
 
     // MARK: - 変換
 
     private func startConversion() {
-        guard let converter, !composition.pending.isEmpty else { return }
+        guard let converter, !composition.pending.isEmpty, !isSecureFocused else { return }
         session = ConversionSession(reading: composition.pending) { converter.columns(for: $0) }
         applyEnabled()
         showSession(animated: true)
@@ -530,7 +569,7 @@ final class FlickPanel {
     }
 
     private func recordLearning(_ selections: [ConversionSession.Selection]) {
-        guard !selections.isEmpty, isLearningEnabled else { return }
+        guard !selections.isEmpty, !isSecureFocused else { return }
         for selection in selections {
             converter?.learning.record(reading: selection.reading, surface: selection.surface)
         }

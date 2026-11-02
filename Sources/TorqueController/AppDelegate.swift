@@ -74,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.compactPanel = compactPanel
         applyLayout()
         applyOpacity()
+        applyRipples()
         applyFocusPolicy()
 
         cornerMonitor.corners = settings.corners
@@ -169,6 +170,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         compactPanel?.setOpacity(settings.opacity(of: .compact))
         compactPanel?.qwerty.setOpacity(settings.opacity(of: .qwerty))
         flickPanel?.setOpacity(settings.opacity(of: .flick))
+    }
+
+    private func applyRipples() {
+        compactPanel?.setRipplesEnabled(settings.ripples)
+        flickPanel?.setRipplesEnabled(settings.ripples)
     }
 
     private func showPanelMenu(for panel: PanelID, from view: NSView) {
@@ -293,6 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.sectionHeader(title: "配置と外観"))
         menu.addItem(makePerPanelItem("不透明度", makeOpacityItem(_:for:)))
         menu.addItem(makePerPanelItem("倍率", makeScaleItem(_:for:)))
+        addActionItem(to: menu, "波紋", #selector(toggleRipples)).state = settings.ripples ? .on : .off
         addActionItem(to: menu, "画面内に収める", #selector(toggleKeepsInScreen)).state = settings.keepsInScreen ? .on : .off
         addActionItem(to: menu, "位置を初期に戻す", #selector(resetPositions))
         menu.addItem(.separator())
@@ -368,6 +375,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let choice = sender.representedObject as? PanelChoice else { return }
         settings.setOpacity(choice.value, of: choice.panel)
         applyOpacity()
+    }
+
+    @objc private func toggleRipples() {
+        settings.ripples.toggle()
+        applyRipples()
     }
 
     @objc private func toggleKeepsInScreen() {

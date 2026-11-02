@@ -8,6 +8,8 @@ final class ModeBackgroundView: NSView {
     }
 
     override var mouseDownCanMoveWindow: Bool { false }
+    /// パネル全体を覆うので、文字のキーより手前にあってもクリックを受けない。
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
         NSGraphicsContext.current?.cgContext.setAlpha(isDimmed ? Theme.Palette.dimmedAlpha : 1)
@@ -27,7 +29,7 @@ final class ModeHighlightView: NSView {
     }
 }
 
-final class KeyView: NSView {
+final class KeyView: NSView, RippleSource {
     var label: String {
         didSet { needsDisplay = true }
     }
@@ -57,6 +59,7 @@ final class KeyView: NSView {
     var isEnabled = true {
         didSet { needsDisplay = true }
     }
+    var firesRipple: Bool { isEnabled }
     /// 変換中など、今は使わないキーの明度を下げる。
     var isDimmed = false {
         didSet { needsDisplay = true }

@@ -120,6 +120,7 @@ final class FlickPanel {
 
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
+        panel.installRipple()
 
         compositionPanel = FloatingPanel(contentRect: .zero)
         compositionPanel.level = Levels.composition
@@ -165,6 +166,10 @@ final class FlickPanel {
     func setOpacity(_ opacity: CGFloat) {
         panel.alphaValue = opacity
         compositionPanel.alphaValue = opacity
+    }
+
+    func setRipplesEnabled(_ isEnabled: Bool) {
+        panel.rippleView?.isEnabled = isEnabled
     }
 
     func setVisible(_ isVisible: Bool) {

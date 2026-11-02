@@ -115,6 +115,18 @@ enum Theme {
         static let candidateColumnDelay: CFTimeInterval = 0.025
         static let guideReveal: CFTimeInterval = 0.12
         static let pressRing: CFTimeInterval = 0.2
+        static let rippleExpand: CFTimeInterval = 0.6
+        static let rippleFade: CFTimeInterval = 0.15
+    }
+
+    /// パネルの背景の波紋。半径には bounds の倍率が掛かる。
+    enum Ripple {
+        /// 内側から順に。外側ほど薄い。
+        static let rings: [(radius: CGFloat, opacity: Float)] = [(60, 0.35), (100, 0.25), (140, 0.15)]
+        /// 終わりに漸近的に近づく、強いイーズアウト。
+        static var expandTiming: CAMediaTimingFunction {
+            CAMediaTimingFunction(controlPoints: 0.1, 0.9, 0.2, 1)
+        }
     }
 
     /// 選択中の表現。淡い塗りと、強調の太さの輪郭線。

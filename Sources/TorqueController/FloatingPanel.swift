@@ -4,6 +4,8 @@ import AppKit
 final class FloatingPanel: NSPanel {
     /// 右クリックされたとき。全てのパネルで共通。
     static var onRightClick: (@MainActor (NSEvent, NSView) -> Void)?
+    /// 背景の波紋。キーボードの3つのパネルだけが持つ。
+    private(set) var rippleView: RippleView?
 
     init(contentRect: NSRect) {
         super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -18,15 +20,36 @@ final class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// 土台を置いた直後、キーを置く前に呼ぶ。波紋はキーの後ろ、ぼかしの上に入る。
+    func installRipple() {
+        guard let background = contentView as? PanelBackgroundView else { return }
+        let view = RippleView(frame: background.bounds)
+        background.content = view
+        rippleView = view
+    }
+
     /// 右クリックはキーに届けず、ここで受ける。左ボタンでキーを押している間は何もしない。
+    /// 波紋はキーの処理の後に出すので、キーの反応を待たせない。
     override func sendEvent(_ event: NSEvent) {
-        guard event.type == .rightMouseDown else {
-            super.sendEvent(event)
+        if event.type == .rightMouseDown {
+            if NSEvent.pressedMouseButtons & 1 == 0, let contentView {
+                Self.onRightClick?(event, contentView)
+            }
             return
         }
-        if NSEvent.pressedMouseButtons & 1 == 0, let contentView {
-            Self.onRightClick?(event, contentView)
+        let rippleOrigin = event.type == .leftMouseDown ? rippleOrigin(of: event) : nil
+        super.sendEvent(event)
+        if let rippleOrigin {
+            rippleView?.ripple(at: rippleOrigin)
         }
+    }
+
+    /// 押した先が波紋を出すキーなら、波紋の座標での位置を返す。持ち手や余白では nil。
+    private func rippleOrigin(of event: NSEvent) -> NSPoint? {
+        guard let rippleView, let contentView, let superview = contentView.superview else { return nil }
+        let target = contentView.hitTest(superview.convert(event.locationInWindow, from: nil))
+        guard (target as? RippleSource)?.firesRipple == true else { return nil }
+        return rippleView.convert(event.locationInWindow, from: nil)
     }
 
     /// 倍率をかけて置く。中身は logicalSize の座標のまま描くので、倍率はビューの bounds で与える。
@@ -34,6 +57,7 @@ final class FloatingPanel: NSPanel {
         setFrame(NSRect(x: origin.x, y: origin.y, width: logicalSize.width * scale, height: logicalSize.height * scale), display: false)
         contentView?.setBoundsSize(logicalSize)
         contentView?.needsDisplay = true
+        rippleView?.scale = scale
     }
 }
 

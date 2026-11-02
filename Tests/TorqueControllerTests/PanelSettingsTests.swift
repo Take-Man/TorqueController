@@ -136,7 +136,7 @@ private func makeSettings() -> PanelSettings {
     let start = menu.items.firstIndex(where: \.isSectionHeader) ?? 0
     #expect(menu.items[start...].filter { !$0.isSeparatorItem && !$0.isSectionHeader }.map(\.title) == [
         "全パネルを隠す", "切り替える隅", "隅に置く時間",
-        "不透明度", "倍率", "画面内に収める", "位置を初期に戻す",
+        "不透明度", "倍率", "波紋", "画面内に収める", "位置を初期に戻す",
         "自動で表示", "自動で隠す", "Electron アプリも判定", "隠れる候補を左右反転",
         "設定を開く…", "設定を読み直す",
         "TorqueController を終了",
@@ -235,4 +235,136 @@ private func makeSettings() -> PanelSettings {
     let flickExtent = flick.logicalExtent
     #expect(flickExtent.minY < 0)
     #expect(flickExtent.maxY >= FlickPanel.panelHeight)
+}
+
+@Test func ripplesDefaultOnAndPersist() {
+    let settings = makeSettings()
+    #expect(settings.ripples)
+    settings.ripples = false
+    #expect(!PanelSettings(defaults: settings.defaults).ripples)
+}
+
+@MainActor @Test func rippleMenuItemTogglesAndSaves() throws {
+    let settings = makeSettings()
+    let delegate = AppDelegate(settings: settings)
+    let menu = delegate.makeAppMenu()
+    let item = try #require(menu.items.first { $0.title == "波紋" })
+    #expect(item.state == .on)
+    let index = try #require(menu.items.firstIndex(of: item))
+    let header = try #require(menu.items[..<index].last { $0.isSectionHeader })
+    #expect(header.title == "配置と外観")
+    menu.performActionForItem(at: index)
+    #expect(!settings.ripples)
+    #expect(delegate.makeAppMenu().items.first { $0.title == "波紋" }?.state == .off)
+}
+
+private func press(_ panel: FloatingPanel, at point: NSPoint) throws {
+    let event = try #require(NSEvent.mouseEvent(
+        with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+        windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+    ))
+    panel.sendEvent(event)
+}
+
+/// 波紋の検査用のパネル。キーの処理は差し替えて、何も送らない。
+@MainActor private func makeRipplePanel() throws -> (FloatingPanel, RippleView, KeyView) {
+    let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100))
+    panel.contentView = PanelBackgroundView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+    panel.installRipple()
+    let key = KeyView(label: "a")
+    key.frame = NSRect(x: 10, y: 10, width: 50, height: 50)
+    panel.contentView?.addSubview(key)
+    let grip = GripView(frame: NSRect(x: 100, y: 10, width: 50, height: 50))
+    panel.contentView?.addSubview(grip)
+    return (panel, try #require(panel.rippleView), key)
+}
+
+@MainActor @Test func pressingEnabledKeyStartsRippleAtPressedPoint() throws {
+    let (panel, ripple, _) = try makeRipplePanel()
+    ripple.reducesMotion = { false }
+    try press(panel, at: NSPoint(x: 30, y: 40))
+    #expect(ripple.origin == NSPoint(x: 30, y: 40))
+}
+
+@MainActor @Test func gripPaddingAndDisabledKeysFireNoRipple() throws {
+    let (panel, ripple, key) = try makeRipplePanel()
+    try press(panel, at: NSPoint(x: 120, y: 30))
+    #expect(ripple.origin == nil)
+    try press(panel, at: NSPoint(x: 190, y: 90))
+    #expect(ripple.origin == nil)
+    key.isEnabled = false
+    try press(panel, at: NSPoint(x: 30, y: 40))
+    #expect(ripple.origin == nil)
+}
+
+@MainActor @Test func rippleViewReceivesNoClicks() {
+    let ripple = RippleView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+    #expect(ripple.hitTest(NSPoint(x: 50, y: 50)) == nil)
+}
+
+@MainActor @Test func repeatedPressesKeepOneSetAndLastOrigin() {
+    let ripple = RippleView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+    ripple.reducesMotion = { false }
+    ripple.ripple(at: NSPoint(x: 1, y: 1))
+    #expect(ripple.origin == NSPoint(x: 1, y: 1))
+    for x in 2...20 {
+        ripple.ripple(at: NSPoint(x: CGFloat(x), y: 1))
+    }
+    #expect(ripple.ringCount == 3)
+    #expect(ripple.isFading)
+    #expect(ripple.origin == nil)
+    #expect(ripple.pendingOrigin == NSPoint(x: 20, y: 1))
+    RunLoop.main.run(until: Date().addingTimeInterval(Theme.Motion.rippleFade + 0.1))
+    #expect(!ripple.isFading)
+    #expect(ripple.origin == NSPoint(x: 20, y: 1))
+    #expect(ripple.pendingOrigin == nil)
+}
+
+@MainActor @Test func reducedMotionShowsFinalStateImmediately() {
+    let ripple = RippleView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+    ripple.reducesMotion = { true }
+    ripple.ripple(at: NSPoint(x: 1, y: 1))
+    ripple.ripple(at: NSPoint(x: 2, y: 2))
+    #expect(ripple.origin == NSPoint(x: 2, y: 2))
+    #expect(!ripple.isFading)
+}
+
+@MainActor @Test func disablingClearsRippleAndBlocksNewOnes() {
+    let ripple = RippleView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+    ripple.reducesMotion = { false }
+    ripple.ripple(at: NSPoint(x: 1, y: 1))
+    ripple.ripple(at: NSPoint(x: 2, y: 2))
+    ripple.isEnabled = false
+    #expect(ripple.origin == nil)
+    #expect(ripple.pendingOrigin == nil)
+    #expect(!ripple.isFading)
+    ripple.ripple(at: NSPoint(x: 3, y: 3))
+    #expect(ripple.origin == nil)
+}
+
+@MainActor @Test func onlyKeyboardPanelsHaveRipples() {
+    let flick = FlickPanel(origin: .zero, converter: nil, learningURL: URL(fileURLWithPath: "/dev/null"))
+    let compact = CompactPanel(origin: .zero, qwertyOrigin: .zero, shortcuts: [])
+    #expect(flick.panel.rippleView != nil)
+    #expect(compact.panel.rippleView != nil)
+    #expect(compact.qwerty.panel.rippleView != nil)
+    #expect(flick.compositionPanel.rippleView == nil)
+    #expect(flick.guidePanel.rippleView == nil)
+    #expect(flick.overlayPanel.rippleView == nil)
+    #expect(compact.radialPanel.rippleView == nil)
+}
+
+@MainActor @Test func everyKeyOfEveryPanelIsTheHitTarget() throws {
+    let flick = FlickPanel(origin: .zero, converter: nil, learningURL: URL(fileURLWithPath: "/dev/null"))
+    let compact = CompactPanel(origin: .zero, qwertyOrigin: .zero, shortcuts: [])
+    for panel in [flick.panel, compact.panel, compact.qwerty.panel] {
+        let content = try #require(panel.contentView)
+        let superview = try #require(content.superview)
+        let keys = content.subviews.filter { $0 is RippleSource }
+        #expect(!keys.isEmpty)
+        for key in keys {
+            let center = NSPoint(x: key.frame.midX, y: key.frame.midY)
+            #expect(content.hitTest(superview.convert(content.convert(center, to: nil), from: nil)) === key)
+        }
+    }
 }

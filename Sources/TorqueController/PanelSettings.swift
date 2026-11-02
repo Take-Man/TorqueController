@@ -56,6 +56,7 @@ struct PanelSettings {
         static let hotCornerNotice = "hotCornerNoticeShown"
         static let keepsInScreen = "keepPanelsInScreen"
         static let mirrorsCandidates = "mirrorCandidates"
+        static let ripples = "panelRipples"
         static func origin(_ panel: PanelID) -> String { "panelOrigin.\(panel.rawValue)" }
         static func scale(_ panel: PanelID) -> String { "panelScale.\(panel.rawValue)" }
         static func opacity(_ panel: PanelID) -> String { "panelOpacity.\(panel.rawValue)" }
@@ -93,6 +94,12 @@ struct PanelSettings {
     var mirrorsCandidates: Bool {
         get { defaults.object(forKey: Key.mirrorsCandidates) as? Bool ?? true }
         nonmutating set { defaults.set(newValue, forKey: Key.mirrorsCandidates) }
+    }
+
+    /// キーを押したときに、パネルの背景へ波紋を出す。
+    var ripples: Bool {
+        get { defaults.object(forKey: Key.ripples) as? Bool ?? true }
+        nonmutating set { defaults.set(newValue, forKey: Key.ripples) }
     }
 
     var corners: Set<ScreenCorner> {

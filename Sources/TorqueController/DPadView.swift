@@ -36,7 +36,7 @@ enum ArrowDirection: CaseIterable {
 }
 
 /// 十字キー。押している間、カーソルの下のブロックの方向を送り続ける。押したままの状態は残さない。
-final class DPadView: NSView {
+final class DPadView: NSView, RippleSource {
     private static let repeatDelay: TimeInterval = 0.35
     private static let repeatInterval: TimeInterval = 0.05
 
@@ -47,6 +47,7 @@ final class DPadView: NSView {
     var isEnabled = true {
         didSet { needsDisplay = true }
     }
+    var firesRipple: Bool { isEnabled }
 
     private var pressed: ArrowDirection? {
         didSet {

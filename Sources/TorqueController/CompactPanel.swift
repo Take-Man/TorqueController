@@ -86,6 +86,7 @@ final class CompactPanel {
         panel = FloatingPanel(contentRect: NSRect(origin: origin, size: size))
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
+        panel.installRipple()
 
         radialPanel = FloatingPanel(contentRect: .zero)
         radialPanel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 3)
@@ -193,6 +194,12 @@ final class CompactPanel {
 
     func show() {
         panel.orderFrontRegardless()
+    }
+
+    /// QWERTY の分も含めて切り替える。
+    func setRipplesEnabled(_ isEnabled: Bool) {
+        panel.rippleView?.isEnabled = isEnabled
+        qwerty.panel.rippleView?.isEnabled = isEnabled
     }
 
     /// 四隅のオン/オフ。QWERTYパネルは表示の状態を覚えたまま隠す。

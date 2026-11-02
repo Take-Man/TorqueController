@@ -93,6 +93,7 @@ final class QwertyPanel {
         panel = FloatingPanel(contentRect: NSRect(origin: origin, size: size))
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
+        panel.installRipple()
 
         // q の左の余白に持ち手を置く
         if let q = rows[1].first?.frame {

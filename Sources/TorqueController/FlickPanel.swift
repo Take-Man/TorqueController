@@ -1,15 +1,15 @@
 import AppKit
 import TorqueEngine
 
-/// フリックのキーボード。パネル、ガイド、未確定文字列、変換を持ち、キーの操作を入力に変える。
+/// フリックパネル。ガイド、入力欄、変換を持ち、キーの操作を入力に変える。
 @MainActor
-final class FlickKeyboard {
+final class FlickPanel {
     /// パネルの重なり順。同じレベルだとクリックしたパネルが前面に来るので、レベルで固定する。
     private enum Levels {
-        static let keyboard = NSWindow.Level.statusBar
-        static let composition = NSWindow.Level(rawValue: keyboard.rawValue + 1)
-        static let overlay = NSWindow.Level(rawValue: keyboard.rawValue + 2)
-        static let guide = NSWindow.Level(rawValue: keyboard.rawValue + 3)
+        static let panel = NSWindow.Level.statusBar
+        static let composition = NSWindow.Level(rawValue: panel.rawValue + 1)
+        static let overlay = NSWindow.Level(rawValue: panel.rawValue + 2)
+        static let guide = NSWindow.Level(rawValue: panel.rawValue + 3)
     }
 
     private enum Metrics {
@@ -42,20 +42,20 @@ final class FlickKeyboard {
         didSet { showSession() }
     }
 
-    private let panel: KeyPanel
+    private let panel: FloatingPanel
     private let logicalSize: NSSize
     private var scale: CGFloat = 1
-    private let guidePanel: KeyPanel
+    private let guidePanel: FloatingPanel
     private let guideView = FlickGuideView()
-    private let compositionPanel: KeyPanel
+    private let compositionPanel: FloatingPanel
     private let compositionView = CompositionView()
     private var gridViews: [KeyView] = []
     private var modeViews: [InputMode: KeyView] = [:]
     private let modeBackgroundView = ModeBackgroundView()
     private let modeHighlightView = NSView()
-    private let deleteView = KeyView(symbolName: FlickKeyboard.deleteSymbol)
-    private let spaceView = KeyView(symbolName: FlickKeyboard.spaceSymbol)
-    private let enterView = KeyView(symbolName: FlickKeyboard.enterSymbol)
+    private let deleteView = KeyView(symbolName: FlickPanel.deleteSymbol)
+    private let spaceView = KeyView(symbolName: FlickPanel.spaceSymbol)
+    private let enterView = KeyView(symbolName: FlickPanel.enterSymbol)
 
     private static let deleteSymbol = "delete.left"
     private static let clearSymbol = "trash"
@@ -73,7 +73,7 @@ final class FlickKeyboard {
 
     private var converter: Converter?
     private let learningURL: URL
-    private let overlayPanel: KeyPanel
+    private let overlayPanel: FloatingPanel
     private let overlayView = CandidateOverlayView()
     /// 変換中の状態。変換していないときは nil。
     private var session: ConversionSession?
@@ -91,11 +91,11 @@ final class FlickKeyboard {
         shift == .off ? mode.grid : mode.grid.map(\.uppercased)
     }
 
-    /// origin はキーボードのパネルの左下。
+    /// origin はパネルの左下。
     init(origin: NSPoint, converter: Converter?, learningURL: URL) {
         self.converter = converter
         self.learningURL = learningURL
-        overlayPanel = KeyPanel(contentRect: NSScreen.main?.frame ?? .zero)
+        overlayPanel = FloatingPanel(contentRect: NSScreen.main?.frame ?? .zero)
         overlayPanel.level = Levels.overlay
         overlayPanel.hasShadow = false
         overlayPanel.contentView = overlayView
@@ -106,10 +106,10 @@ final class FlickKeyboard {
             height: gridHeight + Metrics.padding * 2
         )
         logicalSize = size
-        panel = KeyPanel(contentRect: NSRect(origin: origin, size: size))
-        panel.level = Levels.keyboard
+        panel = FloatingPanel(contentRect: NSRect(origin: origin, size: size))
+        panel.level = Levels.panel
 
-        guidePanel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: Self.guideSide, height: Self.guideSide))
+        guidePanel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: Self.guideSide, height: Self.guideSide))
         guidePanel.level = Levels.guide
         guidePanel.ignoresMouseEvents = true
         guidePanel.contentView = guideView
@@ -117,7 +117,7 @@ final class FlickKeyboard {
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
 
-        compositionPanel = KeyPanel(contentRect: .zero)
+        compositionPanel = FloatingPanel(contentRect: .zero)
         compositionPanel.level = Levels.composition
         compositionPanel.hasShadow = false
         compositionPanel.contentView = compositionView
@@ -206,7 +206,7 @@ final class FlickKeyboard {
         CGFloat(Metrics.rows) * Metrics.keySide + CGFloat(Metrics.rows - 1) * Metrics.gap + Metrics.padding * 2
     }
 
-    /// キーボード全体の左下の初期位置。
+    /// 全パネルの左下の初期位置。
     static func initialOrigin() -> NSPoint {
         guard let screen = NSScreen.main else { return .zero }
         return NSPoint(
@@ -612,7 +612,7 @@ final class FlickKeyboard {
         trackCursor()
     }
 
-    /// 入力欄は文字があるときだけ、文字の背景となる最小の幅で、キーボードの上に左揃えで出す。
+    /// 入力欄は文字があるときだけ、文字の背景となる最小の幅で、パネルの上に左揃えで出す。
     private func showCompositionPanel() {
         guard !composition.isEmpty || isConverting else {
             compositionView.isExpanded = false

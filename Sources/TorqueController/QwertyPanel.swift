@@ -38,9 +38,9 @@ enum QwertyKey: Equatable {
     }
 }
 
-/// QWERTY の英字キーボード。押されたキーを伝えるだけで、送信はコンパクトなキーボードが受け持つ。
+/// QWERTYパネル。押されたキーを伝えるだけで、送信はコンパクトパネルが受け持つ。
 @MainActor
-final class QwertyKeyboard {
+final class QwertyPanel {
     private enum Metrics {
         static let keySide: CGFloat = 44
         static let gap: CGFloat = 4
@@ -57,7 +57,7 @@ final class QwertyKeyboard {
     /// 持ち手で動かせる範囲の制限。
     var constrain: ((NSPoint) -> NSPoint)?
 
-    private let panel: KeyPanel
+    private let panel: FloatingPanel
     let logicalSize: NSSize
     private var keyViews: [(key: QwertyKey, view: KeyView)] = []
     /// スマートフォンと同じく、1回で次の1文字だけ、連続2回で固定(CapsLock)。
@@ -65,7 +65,6 @@ final class QwertyKeyboard {
     private var modifiers: Set<Modifier> = []
     private var highlighted: Set<String> = []
 
-    var isVisible: Bool { panel.isVisible }
     /// origin はパネルの左下。
     init(origin: NSPoint) {
         var maxWidth: CGFloat = 0
@@ -91,7 +90,7 @@ final class QwertyKeyboard {
         let layout = rows.joined()
         let size = NSSize(width: maxWidth, height: CGFloat(rowCount) * step - Metrics.gap + Metrics.padding * 2)
         logicalSize = size
-        panel = KeyPanel(contentRect: NSRect(origin: origin, size: size))
+        panel = FloatingPanel(contentRect: NSRect(origin: origin, size: size))
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
 

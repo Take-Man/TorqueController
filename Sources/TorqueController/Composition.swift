@@ -1,4 +1,4 @@
-/// キーボード側で持つ入力欄の文字列。確定済みの部分と、その後ろの未確定のかなからなる。
+/// 入力欄の文字列。確定済みの部分と、その後ろの未確定のかなからなる。
 struct Composition {
     private(set) var confirmed = ""
     private(set) var pending = ""

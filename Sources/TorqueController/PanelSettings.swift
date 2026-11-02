@@ -214,12 +214,12 @@ final class CornerMonitor {
     var onTrigger: (() -> Void)?
 
     private var dwell = CornerDwell(duration: 0.5)
-    private let ringPanel: KeyPanel
+    private let ringPanel: FloatingPanel
     private let ringView = CornerRingView()
     private var timer: Timer?
 
     init() {
-        ringPanel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: Self.ringSide, height: Self.ringSide))
+        ringPanel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: Self.ringSide, height: Self.ringSide))
         ringPanel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 4)
         ringPanel.ignoresMouseEvents = true
         ringPanel.hasShadow = false

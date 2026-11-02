@@ -29,7 +29,7 @@ struct QwertyVisibility: Equatable {
 /// 左の列に ⌃ と ⇧、下の行に ⌥ と ⌘、中央から右に十字キーを置く。左下の余白は持ち手。
 /// 修飾キーのクリックがショートカット入力A、修飾キーからのドラッグがショートカット入力B。
 @MainActor
-final class CompactKeyboard {
+final class CompactPanel {
     private enum Metrics {
         static let keySide: CGFloat = 44
         static let gap: CGFloat = 6
@@ -56,10 +56,10 @@ final class CompactKeyboard {
         }
     }
 
-    private let panel: KeyPanel
-    private let radialPanel: KeyPanel
+    private let panel: FloatingPanel
+    private let radialPanel: FloatingPanel
     private let radialView = ShortcutRadialView()
-    private let qwerty: QwertyKeyboard
+    private let qwerty: QwertyPanel
     private var modifierViews: [Modifier: KeyView] = [:]
     private let escapeView = KeyView(label: "esc")
     private let dPadView = DPadView()
@@ -83,17 +83,17 @@ final class CompactKeyboard {
     init(origin: NSPoint, qwertyOrigin: NSPoint, shortcuts: [Shortcut]) {
         self.shortcuts = shortcuts
         let size = NSSize(width: Self.width, height: Self.height)
-        panel = KeyPanel(contentRect: NSRect(origin: origin, size: size))
+        panel = FloatingPanel(contentRect: NSRect(origin: origin, size: size))
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
 
-        radialPanel = KeyPanel(contentRect: .zero)
+        radialPanel = FloatingPanel(contentRect: .zero)
         radialPanel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 3)
         radialPanel.ignoresMouseEvents = true
         radialPanel.hasShadow = false
         radialPanel.contentView = radialView
 
-        qwerty = QwertyKeyboard(origin: qwertyOrigin)
+        qwerty = QwertyPanel(origin: qwertyOrigin)
         qwerty.onKey = { [weak self] key in self?.qwertyPressed(key) }
         qwerty.onMoved = { [weak self] origin in self?.onMoved?(.qwerty, origin) }
         qwerty.onGripClicked = { [weak self] view in self?.onGripClicked?(.qwerty, view) }
@@ -121,7 +121,7 @@ final class CompactKeyboard {
             view.frame = frame(column: column, row: row)
             view.keepsPressedOutside = true
             view.onBegin = { [weak self] _ in self?.isDragging = false }
-            view.onDrag = { [weak self] offset in self?.modifierDragged(modifier, view: view, offset: offset) }
+            view.onDrag = { [weak self] offset in self?.modifierDragged(modifier, offset: offset) }
             view.onEnd = { [weak self] offset, isInside in
                 self?.modifierEnded(modifier, offset: offset, isInside: isInside, clickCount: view.clickCount)
             }
@@ -313,11 +313,11 @@ final class CompactKeyboard {
 
     // MARK: - ショートカット入力B
 
-    private func modifierDragged(_ modifier: Modifier, view: KeyView, offset: CGVector) {
+    private func modifierDragged(_ modifier: Modifier, offset: CGVector) {
         if !isDragging {
             guard hypot(offset.dx, offset.dy) >= Metrics.dragThreshold else { return }
             isDragging = true
-            showRadial(modifier, view: view, offset: offset)
+            showRadial(modifier, offset: offset)
         }
         if let radial {
             radialView.selection = radial.selection(offset: normalized(offset))
@@ -347,7 +347,7 @@ final class CompactKeyboard {
         self.radial = nil
     }
 
-    private func showRadial(_ modifier: Modifier, view: KeyView, offset: CGVector) {
+    private func showRadial(_ modifier: Modifier, offset: CGVector) {
         let radial = ShortcutRadial(origin: modifier, shortcuts: shortcuts)
         self.radial = radial
         radialView.radial = radial

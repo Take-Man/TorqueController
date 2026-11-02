@@ -27,13 +27,7 @@ private func session(_ reading: String, candidateCount: Int = 2) -> ConversionSe
     #expect(!conversion.isFinished)
     conversion.select(column: 0, candidate: candidate("植"))
     #expect(conversion.isFinished)
-    #expect(conversion.commitText == "亜以植")
-}
-
-@Test func commitKeepsUnconvertedReadingAsKana() {
-    var conversion = session("あいうえ")
-    conversion.select(column: 0, candidate: candidate("亜以"))
-    #expect(conversion.commitText == "亜以うえ")
+    #expect(conversion.convertedText == "亜以植")
 }
 
 @Test func undoRestoresPreviousSelection() {

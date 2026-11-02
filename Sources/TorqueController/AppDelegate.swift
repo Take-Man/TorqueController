@@ -18,8 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let keyboardGap: CGFloat = 6
     /// QWERTY の下に、入力欄を置く分だけ空ける。
     private static let qwertyLift: CGFloat = 56
-    private var keyboard: FlickKeyboard?
-    private var compact: CompactKeyboard?
+    private var flickPanel: FlickPanel?
+    private var compactPanel: CompactPanel?
     private var permissionTimer: Timer?
     private let focusMonitor = FocusMonitor()
     private var focusPolicy = FocusPolicy()
@@ -40,33 +40,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         focusPolicy.autoShow = UserDefaults.standard.object(forKey: Self.autoShowKey) as? Bool ?? true
         focusPolicy.autoHide = UserDefaults.standard.bool(forKey: Self.autoHideKey)
 
-        let origin = FlickKeyboard.initialOrigin()
-        let keyboard = FlickKeyboard(
-            origin: NSPoint(x: origin.x + CompactKeyboard.width + Self.keyboardGap, y: origin.y),
+        let origin = FlickPanel.initialOrigin()
+        let flickPanel = FlickPanel(
+            origin: NSPoint(x: origin.x + CompactPanel.width + Self.keyboardGap, y: origin.y),
             converter: loadConverter(),
             learningURL: LearningModel.defaultURL
         )
-        keyboard.onMoved = { [weak self] origin in self?.settings.setOrigin(origin, of: .flick) }
-        keyboard.onGripClicked = { [weak self] view in self?.showScaleMenu(for: .flick, from: view) }
-        keyboard.constrain = { [weak self] origin in self?.constrained(origin, of: .flick) ?? origin }
-        keyboard.mirrorsCandidates = settings.mirrorsCandidates
-        keyboard.show()
-        self.keyboard = keyboard
+        flickPanel.onMoved = { [weak self] origin in self?.settings.setOrigin(origin, of: .flick) }
+        flickPanel.onGripClicked = { [weak self] view in self?.showScaleMenu(for: .flick, from: view) }
+        flickPanel.constrain = { [weak self] origin in self?.constrained(origin, of: .flick) ?? origin }
+        flickPanel.mirrorsCandidates = settings.mirrorsCandidates
+        flickPanel.show()
+        self.flickPanel = flickPanel
 
-        let compact = CompactKeyboard(
+        let compactPanel = CompactPanel(
             origin: origin,
-            qwertyOrigin: NSPoint(x: origin.x, y: origin.y + FlickKeyboard.panelHeight + Self.qwertyLift),
+            qwertyOrigin: NSPoint(x: origin.x, y: origin.y + FlickPanel.panelHeight + Self.qwertyLift),
             shortcuts: ShortcutStore.load(from: ShortcutStore.defaultURL)
         )
-        compact.onToggleFlick = { [weak self] in
+        compactPanel.onToggleFlick = { [weak self] in
             self?.focusPolicy.userToggledFlick()
             self?.applyFocusPolicy()
         }
-        compact.onMoved = { [weak self] panel, origin in self?.settings.setOrigin(origin, of: panel) }
-        compact.onGripClicked = { [weak self] panel, view in self?.showScaleMenu(for: panel, from: view) }
-        compact.constrain = { [weak self] panel, origin in self?.constrained(origin, of: panel) ?? origin }
-        compact.show()
-        self.compact = compact
+        compactPanel.onMoved = { [weak self] panel, origin in self?.settings.setOrigin(origin, of: panel) }
+        compactPanel.onGripClicked = { [weak self] panel, view in self?.showScaleMenu(for: panel, from: view) }
+        compactPanel.constrain = { [weak self] panel, origin in self?.constrained(origin, of: panel) ?? origin }
+        compactPanel.show()
+        self.compactPanel = compactPanel
         applyLayout()
         applyFocusPolicy()
 
@@ -97,16 +97,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyFocusPolicy() {
         let isSecure = focusPolicy.kind == .secure
         // 隠すときの変換の終了で記録しないよう、先に切り替える
-        keyboard?.isLearningEnabled = !isSecure
-        keyboard?.setVisible(arePanelsVisible && focusPolicy.flickVisible)
-        compact?.setFlickVisible(focusPolicy.flickVisible)
-        compact?.setSecureFocused(isSecure)
+        flickPanel?.isLearningEnabled = !isSecure
+        flickPanel?.setVisible(arePanelsVisible && focusPolicy.flickVisible)
+        compactPanel?.setFlickVisible(focusPolicy.flickVisible)
+        compactPanel?.setSecureFocused(isSecure)
     }
 
     /// 保存した位置と倍率でパネルを置く。動かしていないパネルは、倍率に合わせた初期位置に置く。
     private func applyLayout() {
-        guard let compact, let keyboard else { return }
-        let base = FlickKeyboard.initialOrigin()
+        guard let compactPanel, let flickPanel else { return }
+        let base = FlickPanel.initialOrigin()
         let screens = NSScreen.screens.map(\.frame)
 
         func origin(_ panel: PanelID, size: NSSize, fallback: NSPoint) -> NSPoint {
@@ -123,34 +123,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let compactScale = settings.scale(of: .compact)
         let flickScale = settings.scale(of: .flick)
-        let compactOrigin = origin(.compact, size: NSSize(width: CompactKeyboard.width, height: CompactKeyboard.height), fallback: base)
-        compact.setPlacement(origin: compactOrigin, scale: compactScale)
+        let compactOrigin = origin(.compact, size: NSSize(width: CompactPanel.width, height: CompactPanel.height), fallback: base)
+        compactPanel.setPlacement(origin: compactOrigin, scale: compactScale)
 
         let flickOrigin = origin(
             .flick,
-            size: NSSize(width: FlickKeyboard.panelWidth, height: FlickKeyboard.panelHeight),
-            fallback: NSPoint(x: compactOrigin.x + CompactKeyboard.width * compactScale + Self.keyboardGap, y: compactOrigin.y)
+            size: NSSize(width: FlickPanel.panelWidth, height: FlickPanel.panelHeight),
+            fallback: NSPoint(x: compactOrigin.x + CompactPanel.width * compactScale + Self.keyboardGap, y: compactOrigin.y)
         )
-        keyboard.setPlacement(origin: flickOrigin, scale: flickScale)
+        flickPanel.setPlacement(origin: flickOrigin, scale: flickScale)
 
-        let top = max(compactOrigin.y + CompactKeyboard.height * compactScale, flickOrigin.y + FlickKeyboard.panelHeight * flickScale)
+        let top = max(compactOrigin.y + CompactPanel.height * compactScale, flickOrigin.y + FlickPanel.panelHeight * flickScale)
         let qwertyOrigin = origin(
             .qwerty,
-            size: compact.qwertyLogicalSize,
+            size: compactPanel.qwertyLogicalSize,
             fallback: NSPoint(x: compactOrigin.x, y: top + Self.qwertyLift * flickScale)
         )
-        compact.setQwertyPlacement(origin: qwertyOrigin, scale: settings.scale(of: .qwerty))
+        compactPanel.setQwertyPlacement(origin: qwertyOrigin, scale: settings.scale(of: .qwerty))
     }
 
     /// 設定が有効なら、パネルとガイドが画面に収まる位置に直す。
     private func constrained(_ origin: NSPoint, of panel: PanelID) -> NSPoint {
-        guard settings.keepsInScreen, let compact, let keyboard else { return origin }
+        guard settings.keepsInScreen, let compactPanel, let flickPanel else { return origin }
         let scale = settings.scale(of: panel)
         let logical: CGRect
         switch panel {
-        case .compact: logical = compact.logicalExtent
-        case .flick: logical = keyboard.logicalExtent
-        case .qwerty: logical = CGRect(origin: .zero, size: compact.qwertyLogicalSize)
+        case .compact: logical = compactPanel.logicalExtent
+        case .flick: logical = flickPanel.logicalExtent
+        case .qwerty: logical = CGRect(origin: .zero, size: compactPanel.qwertyLogicalSize)
         }
         let extent = CGRect(x: logical.minX * scale, y: logical.minY * scale, width: logical.width * scale, height: logical.height * scale)
         let location = NSEvent.mouseLocation
@@ -177,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func togglePanels() {
         arePanelsVisible.toggle()
-        compact?.setPanelsVisible(arePanelsVisible)
+        compactPanel?.setPanelsVisible(arePanelsVisible)
         applyFocusPolicy()
     }
 
@@ -318,7 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleMirrorsCandidates() {
         settings.mirrorsCandidates.toggle()
-        keyboard?.mirrorsCandidates = settings.mirrorsCandidates
+        flickPanel?.mirrorsCandidates = settings.mirrorsCandidates
     }
 
     @objc private func resetPositions() {
@@ -349,7 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func reloadShortcutSettings() {
-        compact?.setShortcuts(ShortcutStore.load(from: ShortcutStore.defaultURL))
+        compactPanel?.setShortcuts(ShortcutStore.load(from: ShortcutStore.defaultURL))
     }
 
     private func addInfoItem(to menu: NSMenu, _ title: String) {
@@ -360,9 +360,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshPermissionState() {
         let trusted = AXIsProcessTrusted()
-        keyboard?.setEnabled(trusted)
-        compact?.setEnabled(trusted)
-        let symbol = trusted ? "keyboard" : "exclamationmark.triangle"
+        flickPanel?.setEnabled(trusted)
+        compactPanel?.setEnabled(trusted)
+        let symbol = trusted ? "flickPanel" : "exclamationmark.triangle"
         statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "TorqueController")
     }
 

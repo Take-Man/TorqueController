@@ -27,8 +27,6 @@ struct ConversionSession {
 
     var isFinished: Bool { remaining.isEmpty }
     var convertedText: String { selections.map(\.surface).joined() }
-    /// 送信する文字列。変換していない残りの読みは、かなのまま付ける。
-    var commitText: String { convertedText + remaining }
 
     func visibleCandidates(column: Int) -> ArraySlice<Candidate> {
         let candidates = columns[column].candidates

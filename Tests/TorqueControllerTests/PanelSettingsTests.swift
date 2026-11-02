@@ -106,13 +106,13 @@ private func makeSettings() -> PanelSettings {
 }
 
 @MainActor @Test func extentsIncludeGuidesAndPanels() {
-    let compact = CompactKeyboard(origin: .zero, qwertyOrigin: .zero, shortcuts: ShortcutStore.parse(Shortcut.defaults))
+    let compact = CompactPanel(origin: .zero, qwertyOrigin: .zero, shortcuts: ShortcutStore.parse(Shortcut.defaults))
     let extent = compact.logicalExtent
     #expect(extent.minX < 0)
     #expect(extent.minY < 0)
-    #expect(extent.maxX > CompactKeyboard.width)
-    let flick = FlickKeyboard(origin: .zero, converter: nil, learningURL: URL(fileURLWithPath: "/dev/null"))
+    #expect(extent.maxX > CompactPanel.width)
+    let flick = FlickPanel(origin: .zero, converter: nil, learningURL: URL(fileURLWithPath: "/dev/null"))
     let flickExtent = flick.logicalExtent
     #expect(flickExtent.minY < 0)
-    #expect(flickExtent.maxY >= FlickKeyboard.panelHeight)
+    #expect(flickExtent.maxY >= FlickPanel.panelHeight)
 }

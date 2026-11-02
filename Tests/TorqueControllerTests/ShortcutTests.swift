@@ -156,7 +156,7 @@ func farOutsideTheCircleStillSelectsByDirection(offset: CGVector) {
 }
 
 @MainActor @Test func qwertyShiftAppliesOnceThenLocksLikeCapsLock() {
-    let qwerty = QwertyKeyboard(origin: .zero)
+    let qwerty = QwertyPanel(origin: .zero)
     #expect(qwerty.displayed(base: "a", shifted: "A") == "a")
     qwerty.update(modifiers: [.shift], highlighted: [])
     #expect(qwerty.displayed(base: "a", shifted: "A") == "A")

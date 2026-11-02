@@ -88,7 +88,7 @@ struct FocusPolicy: Equatable {
 @MainActor
 final class FocusMonitor {
     private static let interval: TimeInterval = 0.3
-    /// 応答しないアプリがあっても、キーボードを止めない。
+    /// 応答しないアプリがあっても、パネルを止めない。
     private static let messagingTimeout: Float = 0.05
 
     /// 観測のたびに、種類と要素が変わったかを伝える。

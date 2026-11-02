@@ -32,6 +32,18 @@ open .build/app/TorqueController.app
 
 初回の起動時に、システム設定の「プライバシーとセキュリティ > アクセシビリティ」で TorqueController を許可する。
 
+## 配布用の .dmg
+
+知人に渡す .dmg を作る。ビルドと署名もこの中で行う。渡す前に、[App/Info.plist](App/Info.plist) の CFBundleVersion を上げる。
+
+```bash
+scripts/build-dmg.sh
+```
+
+`.build/TorqueController-0.1.dmg` ができる。中身は TorqueController.app、アプリケーションフォルダへのリンク、受け取った人向けの案内([App/ReadMe-ja.html](App/ReadMe-ja.html) から作る)。Apple シリコンの Mac と macOS 15 以降が必要。
+
+アイコンの元データは [App/AppIcon.svg](App/AppIcon.svg) と [App/MenuBarIcon.svg](App/MenuBarIcon.svg) で、`scripts/build-icons.sh` が書き出す(build-app.sh から呼ぶ)。追加のインストールは要らない。
+
 ## 使い方
 
 - **コンパクトパネル**: 常に表示する。Esc、修飾キー、十字キーと、QWERTYパネルとフリックパネルの切替キーがある。
@@ -41,7 +53,7 @@ open .build/app/TorqueController.app
 - **全パネルのオン/オフ**: 画面の右下の隅に 0.5 秒カーソルを置く。
 - **移動、不透明度、倍率**: 各パネルの六点の持ち手をドラッグして動かす。クリックすると、そのパネルの不透明度と倍率を選ぶメニューが開く。
 
-その他の設定は、メニューバーのアイコンか、パネルの右クリックで開くメニューから変える。
+その他の設定は、メニューバーのアイコンか、パネルの右クリックで開くメニューから変える。アクセシビリティが未許可の間は、メニューバーのアイコンが三角の警告の記号になる。
 
 すでに動いているときにもう1つ起動すると、新しい方はパネルを出さずに終了する。
 

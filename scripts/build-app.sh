@@ -14,6 +14,7 @@ fi
 
 swift build -c release --product TorqueController
 BIN="$(swift build -c release --show-bin-path)/TorqueController"
+scripts/build-icons.sh >/dev/null
 
 pkill -x TorqueController || true
 rm -rf "$APP"
@@ -21,6 +22,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp App/Info.plist "$APP/Contents/Info.plist"
 cp "$DICTIONARY" "$APP/Contents/Resources/torque.dict"
 cp ThirdParty/Mozc-LICENSE.txt "$APP/Contents/Resources/Mozc-LICENSE.txt"
+cp .build/icon/AppIcon.icns .build/icon/MenuBarIcon.png .build/icon/MenuBarIcon@2x.png "$APP/Contents/Resources/"
 cp "$BIN" "$APP/Contents/MacOS/TorqueController"
 
 if security find-identity -p codesigning | grep -q "\"$IDENTITY\""; then

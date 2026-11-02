@@ -433,9 +433,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let trusted = AXIsProcessTrusted()
         flickPanel?.setEnabled(trusted)
         compactPanel?.setEnabled(trusted)
-        let symbol = trusted ? "flickPanel" : "exclamationmark.triangle"
-        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "TorqueController")
+        statusItem.button?.image = trusted
+            ? Self.menuBarIcon
+            : NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "TorqueController")
     }
+
+    /// .app の外の実行ファイルにはリソースがないので、記号で代える。
+    private static let menuBarIcon: NSImage? = {
+        guard let image = Bundle.main.image(forResource: "MenuBarIcon") else {
+            return NSImage(systemSymbolName: "keyboard", accessibilityDescription: "TorqueController")
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "TorqueController"
+        return image
+    }()
 
     @objc private func openAccessibilitySettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {

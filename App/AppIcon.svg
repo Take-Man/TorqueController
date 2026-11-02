@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TorqueController のアプリアイコンの元データ。座標は 200 単位の作図空間で、macOS のアイコンの枠(1024 のキャンバスに 824 の本体)へ変換している。
+     本体の上下を、フリックの輪の中心を通り右上がりに約10度傾いた境界で分け、上を黒、下を白にして、モチーフの明暗を反転させる。アクセント色は橙 #F08A24 の1色。 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+<clipPath id="body"><rect x="8" y="8" width="184" height="184" rx="42"/></clipPath>
+<clipPath id="top"><polygon points="0,0 200,0 200,70.6 0,105.8"/></clipPath>
+<clipPath id="bottom"><polygon points="0,105.8 200,70.6 200,200 0,200"/></clipPath>
+</defs>
+<g transform="translate(100 100) scale(4.4783) translate(-8 -8)">
+<g clip-path="url(#body)">
+<g clip-path="url(#top)"><rect x="8" y="8" width="184" height="184" fill="#1C1C1E"/><g transform="matrix(1.5 0 0 1.5 -72 -50)">
+<path d="M139.6 51.2 A85 85 0 0 1 139.6 148.8" fill="none" stroke="#F08A24" stroke-width="1.5" stroke-opacity=".55"/>
+<circle cx="70" cy="100" r="40" fill="#F2F2F2" fill-opacity=".05" stroke="#F2F2F2" stroke-opacity=".55" stroke-width="1.5"/>
+<g stroke="#F2F2F2" stroke-width="1.5" stroke-opacity=".35"><line x1="60.1" y1="90.1" x2="41.7" y2="71.7"/><line x1="60.1" y1="109.9" x2="41.7" y2="128.3"/></g>
+<path d="M79.9 90.1 L98.3 71.7 A40 40 0 0 1 98.3 128.3 L79.9 109.9 A14 14 0 0 0 79.9 90.1 Z" fill="#F08A24" fill-opacity=".2" stroke="#F08A24" stroke-width="2"/>
+<g stroke="#F08A24" stroke-width="1.2" stroke-opacity=".5"><line x1="70" y1="100" x2="147" y2="64"/><line x1="70" y1="100" x2="147" y2="136"/></g>
+<line x1="70" y1="100" x2="142" y2="100" stroke="#F08A24" stroke-width="2.5"/>
+<g fill="#F2F2F2" fill-opacity=".22"><rect x="134" y="55" width="26" height="18" rx="5"/><rect x="134" y="127" width="26" height="18" rx="5"/></g>
+<rect x="142" y="91" width="26" height="18" rx="5" fill="#F2F2F2"/>
+<circle cx="70" cy="100" r="14" fill="#1C1C1E" stroke="#F08A24" stroke-width="2.5"/>
+</g></g>
+<g clip-path="url(#bottom)"><rect x="8" y="8" width="184" height="184" fill="#F5F5F7"/><g transform="matrix(1.5 0 0 1.5 -72 -50)">
+<path d="M139.6 51.2 A85 85 0 0 1 139.6 148.8" fill="none" stroke="#F08A24" stroke-width="1.5" stroke-opacity=".6"/>
+<circle cx="70" cy="100" r="40" fill="#1C1C1E" fill-opacity=".04" stroke="#1C1C1E" stroke-opacity=".5" stroke-width="1.5"/>
+<g stroke="#1C1C1E" stroke-width="1.5" stroke-opacity=".3"><line x1="60.1" y1="90.1" x2="41.7" y2="71.7"/><line x1="60.1" y1="109.9" x2="41.7" y2="128.3"/></g>
+<path d="M79.9 90.1 L98.3 71.7 A40 40 0 0 1 98.3 128.3 L79.9 109.9 A14 14 0 0 0 79.9 90.1 Z" fill="#F08A24" fill-opacity=".2" stroke="#F08A24" stroke-width="2"/>
+<g stroke="#F08A24" stroke-width="1.2" stroke-opacity=".55"><line x1="70" y1="100" x2="147" y2="64"/><line x1="70" y1="100" x2="147" y2="136"/></g>
+<line x1="70" y1="100" x2="142" y2="100" stroke="#F08A24" stroke-width="2.5"/>
+<g fill="#1C1C1E" fill-opacity=".14"><rect x="134" y="55" width="26" height="18" rx="5"/><rect x="134" y="127" width="26" height="18" rx="5"/></g>
+<rect x="142" y="91" width="26" height="18" rx="5" fill="#1C1C1E"/>
+<circle cx="70" cy="100" r="14" fill="#F5F5F7" stroke="#F08A24" stroke-width="2.5"/>
+</g></g>
+</g>
+<rect x="8" y="8" width="184" height="184" rx="42" fill="none" stroke="#8E8E93" stroke-opacity=".35" stroke-width="0.6"/>
+</g>
+</svg>

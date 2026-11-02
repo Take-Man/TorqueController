@@ -31,7 +31,20 @@ final class FlickKeyboard {
         static let compositionToggleDuration: TimeInterval = 0.2
     }
 
+    /// 持ち手で動かし終えたとき。
+    var onMoved: ((NSPoint) -> Void)?
+    /// 持ち手をクリックしたとき。
+    var onGripClicked: ((NSView) -> Void)?
+    /// 持ち手で動かせる範囲の制限。
+    var constrain: ((NSPoint) -> NSPoint)?
+    /// 候補が隠れるときに左右反転する。
+    var mirrorsCandidates = true {
+        didSet { showSession() }
+    }
+
     private let panel: KeyPanel
+    private let logicalSize: NSSize
+    private var scale: CGFloat = 1
     private let guidePanel: KeyPanel
     private let guideView = FlickGuideView()
     private let compositionPanel: KeyPanel
@@ -92,11 +105,11 @@ final class FlickKeyboard {
             width: contentWidth + Metrics.padding * 2,
             height: gridHeight + Metrics.padding * 2
         )
+        logicalSize = size
         panel = KeyPanel(contentRect: NSRect(origin: origin, size: size))
         panel.level = Levels.keyboard
 
-        let guideSide = (FlickGuideView.outerRadius + 2) * 2
-        guidePanel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: guideSide, height: guideSide))
+        guidePanel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: Self.guideSide, height: Self.guideSide))
         guidePanel.level = Levels.guide
         guidePanel.ignoresMouseEvents = true
         guidePanel.contentView = guideView
@@ -108,6 +121,7 @@ final class FlickKeyboard {
         compositionPanel.level = Levels.composition
         compositionPanel.hasShadow = false
         compositionPanel.contentView = compositionView
+        compositionView.maxFieldWidth = size.width - CompositionView.margin * 2
         compositionView.onClick = { [weak self] in self?.compositionClicked() }
         compositionView.onExpandChange = { [weak self] isExpanded in
             self?.compositionView.isExpanded = isExpanded
@@ -130,6 +144,14 @@ final class FlickKeyboard {
         finishConversion()
         panel.orderOut(nil)
         compositionPanel.orderOut(nil)
+    }
+
+    func setPlacement(origin: NSPoint, scale: CGFloat) {
+        self.scale = scale
+        panel.place(origin: origin, logicalSize: logicalSize, scale: scale)
+        let side = Self.guideSide
+        guidePanel.place(origin: .zero, logicalSize: NSSize(width: side, height: side), scale: scale)
+        showSession()
     }
 
     func setVisible(_ isVisible: Bool) {
@@ -159,6 +181,25 @@ final class FlickKeyboard {
         }
         deleteView.keepsPressedOutside = !isConverting
         deleteView.symbolName = isConverting ? CandidateOverlayView.backSymbol : Self.deleteSymbol
+    }
+
+    /// パネルと、キーから出すガイドと、1行の入力欄の全体の範囲。パネルの左下が原点で、倍率をかける前の大きさ。
+    var logicalExtent: CGRect {
+        var extent = CGRect(origin: .zero, size: logicalSize)
+        let radius = FlickGuideView.outerRadius
+        for view in gridViews {
+            extent = extent.union(CGRect(x: view.frame.midX - radius, y: view.frame.midY - radius, width: radius * 2, height: radius * 2))
+        }
+        extent.size.height = max(extent.maxY, logicalSize.height + CompositionView.collapsedPanelHeight - CompositionView.overlap) - extent.minY
+        return extent
+    }
+
+    private static var guideSide: CGFloat {
+        (FlickGuideView.outerRadius + 2) * 2
+    }
+
+    static var panelWidth: CGFloat {
+        Metrics.sideKeyWidth * 2 + CGFloat(Metrics.gridColumns) * Metrics.keySide + CGFloat(Metrics.gridColumns + 1) * Metrics.gap + Metrics.padding * 2
     }
 
     static var panelHeight: CGFloat {
@@ -235,12 +276,17 @@ final class FlickKeyboard {
         // 削除キーは正方形で枠の下にそろえ、上の余白に持ち手を置く
         let deleteSlot = frame(x: rightX, position: 0)
         deleteView.frame = NSRect(x: deleteSlot.minX, y: deleteSlot.minY, width: Metrics.sideKeyWidth, height: Metrics.sideKeyWidth)
-        background.addSubview(GripView(frame: NSRect(
+        let grip = GripView(frame: NSRect(
             x: deleteSlot.minX,
             y: deleteView.frame.maxY,
             width: Metrics.sideKeyWidth,
             height: deleteSlot.maxY - deleteView.frame.maxY
-        )))
+        ))
+        grip.onDrag = { [weak self] in self?.showSession() }
+        grip.onEnd = { [weak self] origin in self?.onMoved?(origin) }
+        grip.onClick = { [weak self] view in self?.onGripClicked?(view) }
+        grip.constrain = { [weak self] origin in self?.constrain?(origin) ?? origin }
+        background.addSubview(grip)
         deleteView.onBegin = { [weak self] _ in self?.deleteBegan() }
         deleteView.onDrag = { [weak self] offset in self?.deleteDragged(offset) }
         deleteView.onEnd = { [weak self] offset, isInside in self?.deleteEnded(offset, isInside: isInside) }
@@ -306,14 +352,19 @@ final class FlickKeyboard {
 
     private func gridKeyDragged(_ index: Int, offset: CGVector) {
         guard case .flick = grid[index] else { return }
-        guideView.direction = FlickDirection.from(offset: offset, deadZone: FlickGuideView.innerRadius)
+        guideView.direction = FlickDirection.from(offset: normalized(offset), deadZone: FlickGuideView.innerRadius)
+    }
+
+    /// 画面上の移動量を、倍率をかける前の大きさに直す。
+    private func normalized(_ offset: CGVector) -> CGVector {
+        CGVector(dx: offset.dx / scale, dy: offset.dy / scale)
     }
 
     private func gridKeyEnded(_ index: Int, offset: CGVector, isInside: Bool) {
         switch grid[index] {
         case .flick(let characters):
             guidePanel.orderOut(nil)
-            let direction = FlickDirection.from(offset: offset, deadZone: FlickGuideView.innerRadius)
+            let direction = FlickDirection.from(offset: normalized(offset), deadZone: FlickGuideView.innerRadius)
             if let character = characters.character(in: direction) {
                 if mode == .kana {
                     composition.appendPending(character)
@@ -388,7 +439,7 @@ final class FlickKeyboard {
 
     private func deleteDragged(_ offset: CGVector) {
         guard !isConverting else { return }
-        let isClear = DeleteGesture.isClear(offset: offset) && !composition.isEmpty
+        let isClear = DeleteGesture.isClear(offset: normalized(offset)) && !composition.isEmpty
         if isClear {
             deleteHasDragged = true
             stopDeleteRepeat()
@@ -406,7 +457,7 @@ final class FlickKeyboard {
             return
         }
         deleteView.symbolName = Self.deleteSymbol
-        if DeleteGesture.isClear(offset: offset) {
+        if DeleteGesture.isClear(offset: normalized(offset)) {
             composition.clear()
             compositionChanged()
         } else if isInside, !deleteHasRepeated, !deleteHasDragged {
@@ -529,7 +580,7 @@ final class FlickKeyboard {
     /// 候補や中心の上でだけクリックを受け、それ以外は下のキーやアプリへ通す。
     private func trackCursor() {
         let location = NSEvent.mouseLocation
-        let point = CGPoint(x: location.x - overlayPanel.frame.minX, y: location.y - overlayPanel.frame.minY)
+        let point = CGPoint(x: (location.x - overlayPanel.frame.minX) / scale, y: (location.y - overlayPanel.frame.minY) / scale)
         overlayPanel.ignoresMouseEvents = overlayView.trackCursor(at: point) == nil
     }
 
@@ -547,12 +598,14 @@ final class FlickKeyboard {
         if let screen = panel.screen ?? NSScreen.main {
             overlayPanel.setFrame(screen.frame, display: false)
             overlayView.frame = NSRect(origin: .zero, size: screen.frame.size)
+            overlayView.setBoundsSize(NSSize(width: screen.frame.width / scale, height: screen.frame.height / scale))
         }
         let scope = overlayRect(of: compositionView, rect: compositionView.pendingRect(count: reading.count))
         overlayView.update(
             session: session,
             center: CGPoint(x: scope.midX, y: scope.midY),
             scopeRadius: max(Metrics.minScopeRadius, hypot(scope.width, scope.height) / 2 + Metrics.scopePadding),
+            allowsMirroring: mirrorsCandidates,
             animated: animated
         )
         overlayPanel.orderFrontRegardless()
@@ -567,14 +620,21 @@ final class FlickKeyboard {
             return
         }
         guard panel.isVisible else { return }
-        compositionPanel.setFrame(compositionPanelFrame, display: true)
+        compositionPanel.place(origin: compositionPanelOrigin, logicalSize: compositionLogicalSize, scale: scale)
         compositionPanel.orderFrontRegardless()
     }
 
+    private var compositionLogicalSize: NSSize {
+        compositionView.fittingSize()
+    }
+
+    private var compositionPanelOrigin: NSPoint {
+        NSPoint(x: panel.frame.minX, y: panel.frame.maxY - CompositionView.overlap * scale)
+    }
+
     private var compositionPanelFrame: NSRect {
-        let size = compositionView.fittingSize(maxFieldWidth: panel.frame.width - CompositionView.margin * 2)
-        let origin = NSPoint(x: panel.frame.minX, y: panel.frame.maxY - CompositionView.overlap)
-        return NSRect(origin: origin, size: size)
+        let size = compositionLogicalSize
+        return NSRect(origin: compositionPanelOrigin, size: NSSize(width: size.width * scale, height: size.height * scale))
     }
 
     /// 開閉のマークのクリックで、入力欄をなめらかに開閉する。候補の位置は開閉が終わってから合わせる。
@@ -592,6 +652,7 @@ final class FlickKeyboard {
     private func overlayRect(of view: NSView, rect: CGRect) -> CGRect {
         let inWindow = view.convert(rect, to: nil)
         let onScreen = (view.window ?? panel).convertToScreen(inWindow)
-        return onScreen.offsetBy(dx: -overlayPanel.frame.minX, dy: -overlayPanel.frame.minY)
+        let offset = onScreen.offsetBy(dx: -overlayPanel.frame.minX, dy: -overlayPanel.frame.minY)
+        return CGRect(x: offset.minX / scale, y: offset.minY / scale, width: offset.width / scale, height: offset.height / scale)
     }
 }

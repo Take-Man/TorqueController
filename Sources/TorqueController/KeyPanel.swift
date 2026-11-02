@@ -14,6 +14,13 @@ final class KeyPanel: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// 倍率をかけて置く。中身は logicalSize の座標のまま描くので、倍率はビューの bounds で与える。
+    func place(origin: NSPoint, logicalSize: NSSize, scale: CGFloat) {
+        setFrame(NSRect(x: origin.x, y: origin.y, width: logicalSize.width * scale, height: logicalSize.height * scale), display: false)
+        contentView?.setBoundsSize(logicalSize)
+        contentView?.needsDisplay = true
+    }
 }
 
 /// パネルの土台。ドラッグでパネルが動かないようにする。
@@ -33,8 +40,47 @@ final class GripView: NSView {
 
     /// true なら縦に長い配置(2列×3行)。false なら横に長い配置(3列×2行)。
     var isVertical = false
+    /// 動かしている間。
+    var onDrag: (@MainActor () -> Void)?
+    /// 動かし終えたとき。パネルの左下の位置を渡す。
+    var onEnd: (@MainActor (NSPoint) -> Void)?
+    /// 動かさずにクリックしたとき。
+    var onClick: (@MainActor (NSView) -> Void)?
+    /// 動かせる範囲の制限。
+    var constrain: (@MainActor (NSPoint) -> NSPoint)?
+
+    private static let clickSlop: CGFloat = 3
+    private var startMouse = NSPoint.zero
+    private var startOrigin = NSPoint.zero
+    private var hasDragged = false
 
     override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        startMouse = NSEvent.mouseLocation
+        startOrigin = window?.frame.origin ?? .zero
+        hasDragged = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let mouse = NSEvent.mouseLocation
+        if !hasDragged, hypot(mouse.x - startMouse.x, mouse.y - startMouse.y) < Self.clickSlop {
+            return
+        }
+        hasDragged = true
+        let origin = NSPoint(x: startOrigin.x + mouse.x - startMouse.x, y: startOrigin.y + mouse.y - startMouse.y)
+        window?.setFrameOrigin(constrain?(origin) ?? origin)
+        onDrag?()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !hasDragged {
+            onClick?(self)
+        } else if let origin = window?.frame.origin {
+            onEnd?(origin)
+        }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.tertiaryLabelColor.setFill()
@@ -295,6 +341,8 @@ final class CompositionView: NSView {
     /// 下の余白はキーボードの上端に重ねて、背景をつなげる。
     static let overlap: CGFloat = 8
     private static let collapsedFieldHeight: CGFloat = 40
+    /// 1行のときのパネルの高さ。
+    static let collapsedPanelHeight = collapsedFieldHeight + margin + overlap
     private static let textInset: CGFloat = 8
     /// 開閉のマークを置く、上端の帯の高さ。
     private static let toggleHeight: CGFloat = 18
@@ -314,6 +362,8 @@ final class CompositionView: NSView {
     var isExpanded = false {
         didSet { needsDisplay = true }
     }
+    /// 入力欄の幅の上限。パネルの幅で決まる。これを超えると畳む。
+    var maxFieldWidth: CGFloat = 0
     var onClick: (@MainActor () -> Void)?
     /// 開閉のマークのクリックを伝える。
     var onExpandChange: (@MainActor (Bool) -> Void)?
@@ -321,20 +371,25 @@ final class CompositionView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// この幅の入力欄に1行で収まらないとき true。
-    func overflows(fieldWidth: CGFloat) -> Bool {
-        Self.width(fullText) > fieldWidth - Self.textInset * 2
+    /// 文字列がパネルの幅に収まらず、畳むか開くかを選ぶとき true。
+    /// 倍率をかけると bounds の幅に誤差が出るので、bounds ではなく上限の幅で判断する。
+    var overflows: Bool {
+        Self.width(fullText) > maxTextWidth
+    }
+
+    private var maxTextWidth: CGFloat {
+        maxFieldWidth - Self.textInset * 2
     }
 
     /// 文字列に合わせた、パネルの大きさ。入力欄の幅は maxFieldWidth まで。
-    func fittingSize(maxFieldWidth: CGFloat) -> NSSize {
+    func fittingSize() -> NSSize {
         let fieldWidth = min(maxFieldWidth, Self.width(fullText) + Self.textInset * 2)
         var fieldHeight = Self.collapsedFieldHeight
-        if isExpanded, overflows(fieldWidth: maxFieldWidth) {
+        if isExpanded, overflows {
             let layout = TextLayout(string: attributedText, width: fieldWidth - Self.textInset * 2)
             fieldHeight = max(fieldHeight, layout.usedHeight + Self.textInset * 2)
         }
-        let topMargin = overflows(fieldWidth: maxFieldWidth) ? Self.toggleHeight : Self.margin
+        let topMargin = overflows ? Self.toggleHeight : Self.margin
         return NSSize(width: fieldWidth + Self.margin * 2, height: fieldHeight + topMargin + Self.overlap)
     }
 
@@ -361,7 +416,7 @@ final class CompositionView: NSView {
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         guard bounds.contains(point) else { return }
-        if canToggle, point.y >= fieldRect.maxY {
+        if overflows, point.y >= fieldRect.maxY {
             onExpandChange?(!isExpanded)
         } else {
             onClick?()
@@ -382,7 +437,7 @@ final class CompositionView: NSView {
         } else {
             drawCollapsed()
         }
-        if canToggle {
+        if overflows {
             drawToggle()
         }
     }
@@ -425,15 +480,14 @@ final class CompositionView: NSView {
     }
 
     private var fullText: String { confirmedText + pendingText }
-    private var canToggle: Bool { overflows(fieldWidth: bounds.width - Self.margin * 2) }
-    private var showsWrappedText: Bool { isExpanded && canToggle }
+    private var showsWrappedText: Bool { isExpanded && overflows }
 
     private var fieldRect: NSRect {
         NSRect(
             x: Self.margin,
             y: Self.overlap,
             width: bounds.width - Self.margin * 2,
-            height: bounds.height - Self.overlap - (canToggle ? Self.toggleHeight : Self.margin)
+            height: bounds.height - Self.overlap - (overflows ? Self.toggleHeight : Self.margin)
         )
     }
 
@@ -444,7 +498,7 @@ final class CompositionView: NSView {
     private var collapsedLine: CollapsedLine {
         CollapsedLine(
             textWidth: Self.width(fullText),
-            availableWidth: textRect.width,
+            availableWidth: maxTextWidth,
             ellipsisWidth: Self.ellipsisWidth,
             focus: underlinesPending ? Self.width(confirmedText) : nil
         )

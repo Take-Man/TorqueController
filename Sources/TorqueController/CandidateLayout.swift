@@ -30,15 +30,20 @@ struct CandidateLayout {
 
     let center: CGPoint
     let scopeRadius: CGFloat
+    /// 左右反転した配置か。候補は中心の左へ並び、戻す領域は右に来る。
+    let isMirrored: Bool
+    /// 画面に収まらず、隠れた候補や端に寄せた候補があるか。
+    private(set) var isClipped = false
     private(set) var columns: [Column] = []
     private(set) var ringRadii: [CGFloat] = []
     private var cells: [[CGRect]] = []
     private var nextCells: [CGRect?] = []
 
     /// 候補は bounds の中に収める。置く場所がなくなった列から外側は表示しない。
-    init(columns: [Column], center: CGPoint, scopeRadius: CGFloat, bounds: CGRect) {
+    init(columns: [Column], center: CGPoint, scopeRadius: CGFloat, bounds: CGRect, isMirrored: Bool = false) {
         self.center = center
         self.scopeRadius = scopeRadius
+        self.isMirrored = isMirrored
 
         var occupied: [CGRect] = []
         var radius: CGFloat = 0
@@ -49,16 +54,23 @@ struct CandidateLayout {
             radius = max(radius, Self.maxRowOffset(column: index) / sin(Self.maxHalfAngle * .pi / 180))
             while true {
                 radius += Self.searchStep
-                guard radius <= maxRadius else { break placing }
-                let rows = (0..<rowCount).map {
-                    Self.clamped(cellRect(row: $0, rowCount: rowCount, radius: radius, width: column.width), into: bounds)
+                guard radius <= maxRadius else {
+                    isClipped = true
+                    break placing
                 }
+                let exactRows = (0..<rowCount).map { cellRect(row: $0, rowCount: rowCount, radius: radius, width: column.width) }
+                let rows = exactRows.map { Self.clamped($0, into: bounds) }
                 let used = Array(rows.prefix(column.rowCount)) + (column.hasNext ? [rows[rowCount - 1]] : [])
                 let spaced = used.map { $0.insetBy(dx: -Self.cellSpacing, dy: -Self.cellSpacing) }
                 let isClear = !spaced.contains { rect in
                     occupied.contains { $0.intersects(rect) } || touchesCenter(rect)
                 }
                 if isClear {
+                    let isCellClipped = (0..<rowCount).contains { row in
+                        let isUsed = row < column.rowCount || (column.hasNext && row == rowCount - 1)
+                        return isUsed && !bounds.contains(exactRows[row])
+                    }
+                    isClipped = isClipped || isCellClipped
                     self.columns.append(column)
                     ringRadii.append(radius)
                     cells.append(Array(rows.prefix(column.rowCount)))
@@ -101,7 +113,8 @@ struct CandidateLayout {
         let dy = point.y - center.y
         let distance = hypot(dx, dy)
         if distance <= scopeRadius { return .center }
-        if distance <= scopeRadius + Self.backDepth, dx < 0, abs(dy) <= -dx { return .back }
+        let outward = isMirrored ? dx : -dx
+        if distance <= scopeRadius + Self.backDepth, outward > 0, abs(dy) <= outward { return .back }
 
         for column in cells.indices {
             for row in cells[column].indices where cells[column][row].contains(point) {
@@ -130,7 +143,8 @@ struct CandidateLayout {
 
     private func cellRect(row: Int, rowCount: Int, radius: CGFloat, width: CGFloat) -> CGRect {
         let offset = Self.rowOffset(row: row, rowCount: rowCount)
-        let x = center.x + (radius * radius - offset * offset).squareRoot()
+        let distance = (radius * radius - offset * offset).squareRoot()
+        let x = isMirrored ? center.x - distance : center.x + distance
         return CGRect(
             x: x - width / 2,
             y: center.y + offset - Self.cellHeight / 2,

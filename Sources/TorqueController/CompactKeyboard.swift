@@ -41,10 +41,20 @@ final class CompactKeyboard {
     }
 
     static let width = CGFloat(Metrics.columns) * Metrics.keySide + CGFloat(Metrics.columns - 1) * Metrics.gap + Metrics.padding * 2
-    private static let height = CGFloat(Metrics.rows) * Metrics.keySide + CGFloat(Metrics.rows - 1) * Metrics.gap + Metrics.padding * 2
+    static let height = CGFloat(Metrics.rows) * Metrics.keySide + CGFloat(Metrics.rows - 1) * Metrics.gap + Metrics.padding * 2
 
     /// フリックの切替キーが押されたとき。
     var onToggleFlick: (() -> Void)?
+    /// 持ち手で動かし終えたとき。
+    var onMoved: ((PanelID, NSPoint) -> Void)?
+    /// 持ち手をクリックしたとき。
+    var onGripClicked: ((PanelID, NSView) -> Void)?
+    /// 持ち手で動かせる範囲の制限。
+    var constrain: ((PanelID, NSPoint) -> NSPoint)? {
+        didSet {
+            qwerty.constrain = { [weak self] origin in self?.constrain?(.qwerty, origin) ?? origin }
+        }
+    }
 
     private let panel: KeyPanel
     private let radialPanel: KeyPanel
@@ -62,6 +72,8 @@ final class CompactKeyboard {
     private var isSecureFocused = false
     private var isDragging = false
     private var radial: ShortcutRadial?
+    private var scale: CGFloat = 1
+    private var arePanelsVisible = true
 
     private var activeModifiers: Set<Modifier> {
         Set(states.filter { $0.value != .off }.keys)
@@ -83,6 +95,8 @@ final class CompactKeyboard {
 
         qwerty = QwertyKeyboard(origin: qwertyOrigin)
         qwerty.onKey = { [weak self] key in self?.qwertyPressed(key) }
+        qwerty.onMoved = { [weak self] origin in self?.onMoved?(.qwerty, origin) }
+        qwerty.onGripClicked = { [weak self] view in self?.onGripClicked?(.qwerty, view) }
 
         func frame(column: Int, row: Int) -> NSRect {
             NSRect(
@@ -116,7 +130,11 @@ final class CompactKeyboard {
         }
 
         // 左下の余白は持ち手
-        background.addSubview(GripView(frame: frame(column: 0, row: 3)))
+        let grip = GripView(frame: frame(column: 0, row: 3))
+        grip.onEnd = { [weak self] origin in self?.onMoved?(.compact, origin) }
+        grip.onClick = { [weak self] view in self?.onGripClicked?(.compact, view) }
+        grip.constrain = { [weak self] origin in self?.constrain?(.compact, origin) ?? origin }
+        background.addSubview(grip)
 
         // 2キー分の正方形に十字キーの円を置く
         dPadView.frame = frame(column: 1, row: 2).union(frame(column: 2, row: 1))
@@ -146,8 +164,42 @@ final class CompactKeyboard {
         background.addSubview(flickToggleView)
     }
 
+    var qwertyLogicalSize: NSSize { qwerty.logicalSize }
+
+    func setPlacement(origin: NSPoint, scale: CGFloat) {
+        self.scale = scale
+        panel.place(origin: origin, logicalSize: NSSize(width: Self.width, height: Self.height), scale: scale)
+    }
+
+    func setQwertyPlacement(origin: NSPoint, scale: CGFloat) {
+        qwerty.setPlacement(origin: origin, scale: scale)
+    }
+
+    /// パネルと、修飾キーからのドラッグで出す円の全体の範囲。パネルの左下が原点で、倍率をかける前の大きさ。
+    var logicalExtent: CGRect {
+        var extent = CGRect(x: 0, y: 0, width: Self.width, height: Self.height)
+        for (modifier, view) in modifierViews {
+            let radial = ShortcutRadial(origin: modifier, shortcuts: shortcuts)
+            let radius = radial.drawnRadius
+            extent = extent.union(CGRect(x: view.frame.midX - radius, y: view.frame.midY - radius, width: radius * 2, height: radius * 2))
+        }
+        return extent
+    }
+
     func show() {
         panel.orderFrontRegardless()
+    }
+
+    /// 四隅のオン/オフ。QWERTYパネルは表示の状態を覚えたまま隠す。
+    func setPanelsVisible(_ isVisible: Bool) {
+        arePanelsVisible = isVisible
+        if isVisible {
+            panel.orderFrontRegardless()
+        } else {
+            panel.orderOut(nil)
+            radialPanel.orderOut(nil)
+        }
+        applySelection()
     }
 
     /// フリックパネルの表示状態を、切替キーに反映する。
@@ -204,7 +256,7 @@ final class CompactKeyboard {
         if active.isEmpty, !isSecureFocused {
             qwertyVisibility.selectionEmptied()
         }
-        if qwertyVisibility.isVisible {
+        if qwertyVisibility.isVisible, arePanelsVisible {
             qwerty.show()
         } else {
             qwerty.hide()
@@ -268,7 +320,7 @@ final class CompactKeyboard {
             showRadial(modifier, view: view, offset: offset)
         }
         if let radial {
-            radialView.selection = radial.selection(offset: offset)
+            radialView.selection = radial.selection(offset: normalized(offset))
         }
     }
 
@@ -282,7 +334,7 @@ final class CompactKeyboard {
         isDragging = false
         radialPanel.orderOut(nil)
         guard let radial else { return }
-        switch radial.selection(offset: offset) {
+        switch radial.selection(offset: normalized(offset)) {
         case .center:
             TextSender.send(modifier: modifier)
         case .cancel:
@@ -304,7 +356,16 @@ final class CompactKeyboard {
         let location = NSEvent.mouseLocation
         let center = NSPoint(x: location.x - offset.dx, y: location.y - offset.dy)
         let radius = radial.maxRadius + 2
-        radialPanel.setFrame(NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2), display: true)
+        radialPanel.place(
+            origin: NSPoint(x: center.x - radius * scale, y: center.y - radius * scale),
+            logicalSize: NSSize(width: radius * 2, height: radius * 2),
+            scale: scale
+        )
         radialPanel.orderFrontRegardless()
+    }
+
+    /// 画面上の移動量を、倍率をかける前の大きさに直す。
+    private func normalized(_ offset: CGVector) -> CGVector {
+        CGVector(dx: offset.dx / scale, dy: offset.dy / scale)
     }
 }

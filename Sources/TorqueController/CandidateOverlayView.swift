@@ -48,7 +48,7 @@ final class CandidateOverlayView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     /// 表示する内容を変えて、配置を計算し直す。
-    func update(session: ConversionSession, center: CGPoint, scopeRadius: CGFloat, animated: Bool = false) {
+    func update(session: ConversionSession, center: CGPoint, scopeRadius: CGFloat, allowsMirroring: Bool = false, animated: Bool = false) {
         self.session = session
         let columns = session.columns.indices.map { index in
             let visible = session.visibleCandidates(column: index)
@@ -59,7 +59,15 @@ final class CandidateOverlayView: NSView {
                 hasNext: session.hasNextPage(column: index)
             )
         }
-        layout = CandidateLayout(columns: columns, center: center, scopeRadius: scopeRadius, bounds: bounds)
+        var chosen = CandidateLayout(columns: columns, center: center, scopeRadius: scopeRadius, bounds: bounds)
+        // 右側で隠れる候補があれば、左右反転して、そちらのほうが多く見えるときに使う
+        if allowsMirroring, chosen.isClipped {
+            let mirrored = CandidateLayout(columns: columns, center: center, scopeRadius: scopeRadius, bounds: bounds, isMirrored: true)
+            if !mirrored.isClipped || mirrored.columns.count > chosen.columns.count {
+                chosen = mirrored
+            }
+        }
+        layout = chosen
         hovered = nil
         needsDisplay = true
         if animated {
@@ -150,7 +158,11 @@ final class CandidateOverlayView: NSView {
             let angle = layout.arcAngle(column: column)
             let path = NSBezierPath()
             let current = layout.scopeRadius + (radius - layout.scopeRadius) * progress
-            path.appendArc(withCenter: layout.center, radius: current, startAngle: angle, endAngle: -angle, clockwise: true)
+            if layout.isMirrored {
+                path.appendArc(withCenter: layout.center, radius: current, startAngle: 180 - angle, endAngle: 180 + angle)
+            } else {
+                path.appendArc(withCenter: layout.center, radius: current, startAngle: angle, endAngle: -angle, clockwise: true)
+            }
             path.stroke()
         }
     }
@@ -228,8 +240,9 @@ final class CandidateOverlayView: NSView {
         let inner = layout.scopeRadius + 2
         let outer = layout.scopeRadius + 2 + (CandidateLayout.backDepth - 2) * progress
         let path = NSBezierPath()
-        path.appendArc(withCenter: layout.center, radius: outer, startAngle: 135, endAngle: 225)
-        path.appendArc(withCenter: layout.center, radius: inner, startAngle: 225, endAngle: 135, clockwise: true)
+        let middleAngle: CGFloat = layout.isMirrored ? 0 : 180
+        path.appendArc(withCenter: layout.center, radius: outer, startAngle: middleAngle - 45, endAngle: middleAngle + 45)
+        path.appendArc(withCenter: layout.center, radius: inner, startAngle: middleAngle + 45, endAngle: middleAngle - 45, clockwise: true)
         path.close()
         let isHovered = hovered == .back
         (isHovered ? NSColor.controlAccentColor : NSColor.windowBackgroundColor).setFill()
@@ -238,8 +251,9 @@ final class CandidateOverlayView: NSView {
         path.stroke()
 
         let middle = (inner + outer) / 2
-        let area = CGRect(x: layout.center.x - middle - 10, y: layout.center.y - 10, width: 20, height: 20)
-        Self.drawSymbol(Self.backSymbol, in: area, color: isHovered ? .white : .secondaryLabelColor, fraction: progress)
+        let areaX = layout.isMirrored ? layout.center.x + middle - 10 : layout.center.x - middle - 10
+        let area = CGRect(x: areaX, y: layout.center.y - 10, width: 20, height: 20)
+        Self.drawSymbol(layout.isMirrored ? "arrow.uturn.right" : Self.backSymbol, in: area, color: isHovered ? .white : .secondaryLabelColor, fraction: progress)
     }
 
     private static func text(_ string: String, color: NSColor) -> NSAttributedString {

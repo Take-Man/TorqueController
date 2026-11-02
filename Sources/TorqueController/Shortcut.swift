@@ -190,6 +190,11 @@ struct ShortcutRadial {
         }
     }
 
+    /// 実際に描く半径。項目がなければ、中心とキャンセルの領域だけ。
+    var drawnRadius: CGFloat {
+        roots.isEmpty ? Self.centerRadius + ringWidth / 2 : maxRadius
+    }
+
     /// 押した位置からの移動量で選ぶ。y は上が正。円の外でも、方向と段の数で必ずどれかに決まる。
     func selection(offset: CGVector) -> Selection {
         let distance = hypot(offset.dx, offset.dy)

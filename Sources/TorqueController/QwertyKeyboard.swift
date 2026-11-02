@@ -50,7 +50,15 @@ final class QwertyKeyboard {
     /// 押されたキー。シフトキーはここで処理して伝えない。
     var onKey: ((QwertyKey) -> Void)?
 
+    /// 持ち手で動かし終えたとき。
+    var onMoved: ((NSPoint) -> Void)?
+    /// 持ち手をクリックしたとき。
+    var onGripClicked: ((NSView) -> Void)?
+    /// 持ち手で動かせる範囲の制限。
+    var constrain: ((NSPoint) -> NSPoint)?
+
     private let panel: KeyPanel
+    let logicalSize: NSSize
     private var keyViews: [(key: QwertyKey, view: KeyView)] = []
     /// スマートフォンと同じく、1回で次の1文字だけ、連続2回で固定(CapsLock)。
     private var shift = LatchState.off
@@ -82,6 +90,7 @@ final class QwertyKeyboard {
         }
         let layout = rows.joined()
         let size = NSSize(width: maxWidth, height: CGFloat(rowCount) * step - Metrics.gap + Metrics.padding * 2)
+        logicalSize = size
         panel = KeyPanel(contentRect: NSRect(origin: origin, size: size))
         let background = PanelBackgroundView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = background
@@ -90,6 +99,9 @@ final class QwertyKeyboard {
         if let q = rows[1].first?.frame {
             let grip = GripView(frame: NSRect(x: Metrics.padding, y: q.minY, width: q.minX - Metrics.gap - Metrics.padding, height: q.height))
             grip.isVertical = true
+            grip.onEnd = { [weak self] origin in self?.onMoved?(origin) }
+            grip.onClick = { [weak self] view in self?.onGripClicked?(view) }
+            grip.constrain = { [weak self] origin in self?.constrain?(origin) ?? origin }
             background.addSubview(grip)
         }
 
@@ -105,6 +117,10 @@ final class QwertyKeyboard {
             keyViews.append((key, view))
         }
         refresh()
+    }
+
+    func setPlacement(origin: NSPoint, scale: CGFloat) {
+        panel.place(origin: origin, logicalSize: logicalSize, scale: scale)
     }
 
     func show() {

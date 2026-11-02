@@ -250,3 +250,32 @@ private func makeLayout() -> CandidateLayout {
     #expect(layout.contentBounds.contains(layout.nextRect(column: 0) ?? .zero))
     #expect(layout.contentBounds.contains(CGPoint(x: layout.center.x - layout.scopeRadius - CandidateLayout.backDepth, y: layout.center.y)))
 }
+
+@Test func mirroredLayoutPutsCellsAndBackOnTheOtherSide() {
+    let columns: [CandidateLayout.Column] = [.init(width: 60, rowCount: 5, hasNext: true)]
+    let center = CGPoint(x: 700, y: 400)
+    let bounds = CGRect(x: 0, y: 0, width: 1400, height: 900)
+    let normal = CandidateLayout(columns: columns, center: center, scopeRadius: 40, bounds: bounds)
+    let mirrored = CandidateLayout(columns: columns, center: center, scopeRadius: 40, bounds: bounds, isMirrored: true)
+    #expect(normal.cellRect(column: 0, row: 2).midX > center.x)
+    #expect(mirrored.cellRect(column: 0, row: 2).midX < center.x)
+    let radius = 40 + CandidateLayout.backDepth / 2
+    #expect(normal.region(at: CGPoint(x: center.x - radius, y: center.y)) == .back)
+    #expect(mirrored.region(at: CGPoint(x: center.x + radius, y: center.y)) == .back)
+    #expect(mirrored.region(at: CGPoint(x: center.x - radius, y: center.y)) != .back)
+}
+
+@Test func nearRightEdgeIsClippedButMirroredIsNot() {
+    let columns: [CandidateLayout.Column] = (0..<3).map { _ in .init(width: 60, rowCount: 5, hasNext: true) }
+    let center = CGPoint(x: 1300, y: 400)
+    let bounds = CGRect(x: 0, y: 0, width: 1400, height: 900)
+    let normal = CandidateLayout(columns: columns, center: center, scopeRadius: 40, bounds: bounds)
+    let mirrored = CandidateLayout(columns: columns, center: center, scopeRadius: 40, bounds: bounds, isMirrored: true)
+    #expect(normal.isClipped)
+    #expect(!mirrored.isClipped)
+    #expect(mirrored.columns.count == 3)
+}
+
+@Test func roomyLayoutIsNotClipped() {
+    #expect(!makeLayout().isClipped)
+}

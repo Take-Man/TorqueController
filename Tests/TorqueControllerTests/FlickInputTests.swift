@@ -1,4 +1,4 @@
-import CoreGraphics
+import AppKit
 import Testing
 @testable import TorqueController
 
@@ -183,4 +183,22 @@ import Testing
     let chunks = TextSender.chunks(of: long, maxUnits: 20)
     #expect(chunks.allSatisfy { $0.utf16.count <= 20 })
     #expect(chunks.joined() == long)
+}
+
+@MainActor @Test(arguments: PanelSettings.scaleChoices)
+func fieldDoesNotCollapseUntilPanelWidthAtAnyScale(scale: CGFloat) {
+    let view = CompositionView(frame: .zero)
+    view.maxFieldWidth = 280
+    // パネルの幅に収まるあいだ(全角18ptで14文字)は畳まない
+    for count in [1, 7, 14] {
+        view.pendingText = String(repeating: "あ", count: count)
+        let size = view.fittingSize()
+        // 倍率をかけたパネルと同じく、frame と bounds の比を変える
+        view.frame = NSRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale)
+        view.setBoundsSize(size)
+        #expect(!view.overflows)
+        #expect(size.height == CompositionView.collapsedPanelHeight)
+    }
+    view.pendingText = String(repeating: "あ", count: 40)
+    #expect(view.overflows)
 }

@@ -202,3 +202,39 @@ func fieldDoesNotCollapseUntilPanelWidthAtAnyScale(scale: CGFloat) {
     view.pendingText = String(repeating: "あ", count: 40)
     #expect(view.overflows)
 }
+
+private func keyViews(in panel: NSPanel) -> [KeyView] {
+    panel.contentView?.subviews.compactMap { $0 as? KeyView } ?? []
+}
+
+@MainActor @Test func selectionDoesNotWaitForGuideReveal() throws {
+    _ = NSApplication.shared
+    let panel = FlickPanel(origin: .zero, converter: nil, learningURL: URL(fileURLWithPath: "/dev/null"))
+    panel.show()
+    defer { panel.hide() }
+    let key = try #require(keyViews(in: panel.panel).first { $0.label == "か" })
+    key.onBegin?(.zero)
+    let guide = try #require(panel.guidePanel.contentView as? FlickGuideView)
+    #expect(guide.revealProgress == 0)
+    let offset = CGVector(dx: 0, dy: 40)
+    key.onDrag?(offset)
+    #expect(guide.direction == .up)
+    key.onEnd?(offset, true)
+    #expect(guide.revealProgress < 1)
+    #expect(panel.fieldText == "く")
+}
+
+@MainActor @Test func qwertyShiftShowsSelectedState() throws {
+    let panel = QwertyPanel(origin: .zero)
+    let shift = try #require(keyViews(in: panel.panel).first { $0.symbolName == "shift" })
+    #expect(!shift.isSelected)
+    shift.onEnd?(.zero, true)
+    #expect(shift.isSelected)
+    #expect(!shift.isLocked)
+}
+
+@Test func easeOutStaysInRange() {
+    #expect(RevealAnimation.easeOut(-1) == 0)
+    #expect(RevealAnimation.easeOut(0.5) > 0.5)
+    #expect(RevealAnimation.easeOut(2) == 1)
+}

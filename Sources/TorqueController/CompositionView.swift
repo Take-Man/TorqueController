@@ -24,16 +24,16 @@ struct CollapsedLine: Equatable {
 /// 長いときは1行に畳み、上端のマークをクリックすると折り返して全てを表示する。
 final class CompositionView: NSView {
     /// 入力欄の周りの、パネルと同じ背景の幅。
-    static let margin: CGFloat = 8
+    static let margin = Theme.Space.panelPadding
     /// 下の余白はパネルの上端に重ねて、背景をつなげる。
-    static let overlap: CGFloat = 8
+    static let overlap = Theme.Space.panelPadding
     private static let collapsedFieldHeight: CGFloat = 40
     /// 1行のときのパネルの高さ。
     static let collapsedPanelHeight = collapsedFieldHeight + margin + overlap
-    private static let textInset: CGFloat = 8
+    private static let textInset = Theme.Space.inputFieldText
     /// 開閉のマークを置く、上端の帯の高さ。
-    private static let toggleHeight: CGFloat = 18
-    private static let font = NSFont.systemFont(ofSize: 18)
+    private static let toggleHeight = Theme.Space.inputFieldToggle
+    private static let font = NSFont.systemFont(ofSize: Theme.FontSize.inputField)
     private static let ellipsis = "…"
 
     var confirmedText = "" {
@@ -51,16 +51,22 @@ final class CompositionView: NSView {
     }
     /// 入力欄の幅の上限。パネルの幅で決まる。これを超えると畳む。
     var maxFieldWidth: CGFloat = 0
-    /// パネルと重なる部分の背景を塗らない。透けているときに塗ると、重なりが濃く見える。
-    var skipsPanelOverlap = false {
-        didSet { needsDisplay = true }
-    }
     var onClick: (@MainActor () -> Void)?
     /// 開閉のマークのクリックを伝える。
     var onExpandChange: (@MainActor (Bool) -> Void)?
 
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// 背景の形。下の角はパネルの中に隠れるので丸めない。パネルと重なる部分は、ぼかしが濃く見えないよう除き、
+    /// パネルの上の角の外側だけを残して背景をつなげる。
+    var backgroundShape: PanelBackgroundShape {
+        let panelTopHeight = Theme.Radius.panel * 2
+        return PanelBackgroundShape(
+            bottomOverhang: Theme.Radius.panel,
+            cutout: NSRect(x: 0, y: Self.overlap - panelTopHeight, width: maxFieldWidth + Self.margin * 2, height: panelTopHeight)
+        )
+    }
 
     /// 文字列がパネルの幅に収まらず、畳むか開くかを選ぶとき true。
     /// 倍率をかけると bounds の幅に誤差が出るので、bounds ではなく上限の幅で判断する。
@@ -115,26 +121,8 @@ final class CompositionView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        // 下の角はパネルの中に隠れるので、丸めない
-        NSColor.windowBackgroundColor.setFill()
-        let outer = NSRect(x: 0, y: -12, width: bounds.width, height: bounds.height + 12)
-        let outerPath = NSBezierPath(roundedRect: outer, xRadius: 12, yRadius: 12)
-        if skipsPanelOverlap {
-            // パネルの上の角の外側だけは、背景をつなげるために塗る
-            NSGraphicsContext.saveGraphicsState()
-            outerPath.addClip()
-            let panelTop = NSRect(x: 0, y: Self.overlap - 24, width: maxFieldWidth + Self.margin * 2, height: 24)
-            let path = NSBezierPath(rect: bounds)
-            path.append(NSBezierPath(roundedRect: panelTop, xRadius: 12, yRadius: 12))
-            path.windingRule = .evenOdd
-            path.fill()
-            NSGraphicsContext.restoreGraphicsState()
-        } else {
-            outerPath.fill()
-        }
-
-        NSColor.textBackgroundColor.setFill()
-        NSBezierPath(roundedRect: fieldRect, xRadius: 8, yRadius: 8).fill()
+        Theme.Palette.inputField.setFill()
+        NSBezierPath(roundedRect: fieldRect, xRadius: Theme.Radius.key, yRadius: Theme.Radius.key).fill()
 
         if showsWrappedText {
             attributedText.draw(with: textRect, options: [.usesLineFragmentOrigin])
@@ -158,7 +146,7 @@ final class CompositionView: NSView {
         string.draw(at: NSPoint(x: clip.minX - line.start, y: y))
         NSGraphicsContext.restoreGraphicsState()
 
-        let attributes: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: NSColor.secondaryLabelColor]
+        let attributes: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: Theme.Palette.secondaryText]
         if line.hidesLeading {
             NSAttributedString(string: Self.ellipsis, attributes: attributes).draw(at: NSPoint(x: textRect.minX, y: y))
         }
@@ -169,8 +157,8 @@ final class CompositionView: NSView {
 
     /// 上端の帯に出す、開閉のマーク。
     private func drawToggle() {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor]))
+        let configuration = NSImage.SymbolConfiguration(pointSize: Theme.FontSize.inputFieldToggle, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [Theme.Palette.secondaryText]))
         guard let image = NSImage(systemSymbolName: isExpanded ? "chevron.down" : "chevron.up", accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
         else { return }
@@ -226,7 +214,7 @@ final class CompositionView: NSView {
         paragraph.lineBreakMode = .byCharWrapping
         let attributes: [NSAttributedString.Key: Any] = [
             .font: Self.font,
-            .foregroundColor: NSColor.labelColor,
+            .foregroundColor: Theme.Palette.text,
             .paragraphStyle: paragraph,
         ]
         let string = NSMutableAttributedString(string: confirmedText, attributes: attributes)

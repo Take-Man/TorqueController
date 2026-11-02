@@ -32,8 +32,8 @@ struct QwertyVisibility: Equatable {
 final class CompactPanel {
     private enum Metrics {
         static let keySide: CGFloat = 44
-        static let gap: CGFloat = 6
-        static let padding: CGFloat = 8
+        static let gap = Theme.Space.keyGap
+        static let padding = Theme.Space.panelPadding
         static let columns = 3
         static let rows = 4
         /// これより動かすと、クリックではなくドラッグとして扱う。
@@ -252,7 +252,7 @@ final class CompactPanel {
         for (modifier, view) in modifierViews {
             let state = states[modifier] ?? .off
             view.isSelected = state != .off
-            view.hints = state == .locked ? [.down: "●"] : [:]
+            view.isLocked = state == .locked
         }
         let active = activeModifiers
         let highlighted = active.isEmpty ? [] : Set(shortcuts.filter { $0.modifiers == active }.map(\.key))
@@ -367,6 +367,7 @@ final class CompactPanel {
             scale: scale
         )
         radialPanel.orderFrontRegardless()
+        radialView.startReveal()
     }
 
     /// 画面上の移動量を、倍率をかける前の大きさに直す。

@@ -198,15 +198,15 @@ final class CornerRingView: NSView {
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         let radius = min(bounds.width, bounds.height) / 2 - 3
         let track = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
-        track.lineWidth = 4
-        NSColor.windowBackgroundColor.withAlphaComponent(0.8).setStroke()
+        track.lineWidth = Theme.Line.cornerRing
+        Theme.Palette.cornerTrack.setStroke()
         track.stroke()
 
         let arc = NSBezierPath()
         arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * progress, clockwise: true)
-        arc.lineWidth = 4
+        arc.lineWidth = Theme.Line.cornerRing
         arc.lineCapStyle = .round
-        NSColor.controlAccentColor.setStroke()
+        Theme.Palette.accent.setStroke()
         arc.stroke()
     }
 }

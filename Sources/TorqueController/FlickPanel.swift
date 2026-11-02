@@ -15,20 +15,17 @@ final class FlickPanel {
     private enum Metrics {
         static let keySide: CGFloat = 56
         static let sideKeyWidth: CGFloat = 44
-        static let gap: CGFloat = 6
-        static let padding: CGFloat = 8
+        static let gap = Theme.Space.keyGap
+        static let padding = Theme.Space.panelPadding
         static let rows = 4
         static let gridColumns = 3
         /// ガイドの下の区画の文字が画面の下端で切れないよう、パネルを画面下端から離す距離。
         static let minScreenBottomMargin: CGFloat = 60
         static let screenMargin: CGFloat = 16
-        /// スコープの文字列と中心の円の間の余白。
-        static let scopePadding: CGFloat = 6
+        static let scopePadding = Theme.Space.scope
         static let minScopeRadius: CGFloat = 26
         /// 候補の上にカーソルがあるかを調べる間隔。
         static let cursorTrackingInterval: TimeInterval = 0.03
-        static let modeSlideDuration: TimeInterval = 0.18
-        static let compositionToggleDuration: TimeInterval = 0.2
     }
 
     /// 持ち手で動かし終えたとき。
@@ -52,7 +49,7 @@ final class FlickPanel {
     private var gridViews: [KeyView] = []
     private var modeViews: [InputMode: KeyView] = [:]
     private let modeBackgroundView = ModeBackgroundView()
-    private let modeHighlightView = NSView()
+    private let modeHighlightView = ModeHighlightView()
     private let deleteView = KeyView(symbolName: FlickPanel.deleteSymbol)
     private let spaceView = KeyView(symbolName: FlickPanel.spaceSymbol)
     private let enterView = KeyView(symbolName: FlickPanel.enterSymbol)
@@ -127,8 +124,11 @@ final class FlickPanel {
         compositionPanel = FloatingPanel(contentRect: .zero)
         compositionPanel.level = Levels.composition
         compositionPanel.hasShadow = false
-        compositionPanel.contentView = compositionView
+        let compositionBackground = PanelBackgroundView(frame: .zero)
+        compositionPanel.contentView = compositionBackground
+        compositionBackground.content = compositionView
         compositionView.maxFieldWidth = size.width - CompositionView.margin * 2
+        compositionBackground.shape = compositionView.backgroundShape
         compositionView.onClick = { [weak self] in self?.compositionClicked() }
         compositionView.onExpandChange = { [weak self] isExpanded in
             self?.compositionView.isExpanded = isExpanded
@@ -165,7 +165,6 @@ final class FlickPanel {
     func setOpacity(_ opacity: CGFloat) {
         panel.alphaValue = opacity
         compositionPanel.alphaValue = opacity
-        compositionView.skipsPanelOverlap = opacity < 1
     }
 
     func setVisible(_ isVisible: Bool) {
@@ -214,7 +213,7 @@ final class FlickPanel {
             kanaView.isDimmed = true
         }
         modeBackgroundView.isDimmed = isConverting
-        modeHighlightView.alphaValue = isConverting ? KeyView.dimmedAlpha : 1
+        modeHighlightView.alphaValue = isConverting ? Theme.Palette.dimmedAlpha : 1
         for view in [deleteView, spaceView, enterView] {
             view.isEnabled = isEnabled
         }
@@ -294,8 +293,6 @@ final class FlickPanel {
         modeBackgroundView.keyFrames = InputMode.allCases.indices.map { frame(x: leftX, position: $0) }
         background.addSubview(modeBackgroundView)
         modeHighlightView.wantsLayer = true
-        modeHighlightView.layer?.cornerRadius = 8
-        modeHighlightView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
         modeHighlightView.frame = frame(x: leftX, position: 0)
         background.addSubview(modeHighlightView)
 
@@ -351,6 +348,7 @@ final class FlickPanel {
             view.label = key.label
             view.symbolName = nil
             view.isSelected = false
+            view.isLocked = false
             view.keepsPressedOutside = false
             view.hints = [:]
             switch key {
@@ -362,6 +360,7 @@ final class FlickPanel {
             case .shift:
                 view.symbolName = shift.shiftSymbol
                 view.isSelected = shift != .off
+                view.isLocked = shift == .locked
             case .cycle:
                 break
             }
@@ -371,7 +370,7 @@ final class FlickPanel {
         }
         if let target = modeViews[mode]?.frame, modeHighlightView.frame != target {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = Metrics.modeSlideDuration
+                context.duration = Theme.Motion.modeSlide
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 modeHighlightView.animator().frame = target
             }
@@ -387,6 +386,7 @@ final class FlickPanel {
         let side = guidePanel.frame.width
         guidePanel.setFrameOrigin(NSPoint(x: location.x - side / 2, y: location.y - side / 2))
         guidePanel.orderFrontRegardless()
+        guideView.startReveal()
     }
 
     private func gridKeyDragged(_ index: Int, offset: CGVector) {
@@ -686,7 +686,7 @@ final class FlickPanel {
     /// 開閉のマークのクリックで、入力欄をなめらかに開閉する。候補の位置は開閉が終わってから合わせる。
     private func animateCompositionPanel() {
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = Metrics.compositionToggleDuration
+            context.duration = Theme.Motion.inputFieldToggle
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             compositionPanel.animator().setFrame(compositionPanelFrame, display: true)
         } completionHandler: { [weak self] in

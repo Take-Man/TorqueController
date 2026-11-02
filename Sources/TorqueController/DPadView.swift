@@ -89,13 +89,23 @@ final class DPadView: NSView {
         let circle = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
 
         NSGraphicsContext.saveGraphicsState()
-        NSColor.controlColor.withAlphaComponent(0.25).setFill()
+        Theme.Palette.dPadTrack.setFill()
         circle.fill()
         circle.addClip()
         for direction in ArrowDirection.allCases {
             let block = blockRect(direction)
-            (pressed == direction ? NSColor.controlAccentColor : NSColor.controlColor).setFill()
-            NSBezierPath(roundedRect: block, xRadius: 4, yRadius: 4).fill()
+            let path = NSBezierPath(roundedRect: block, xRadius: Theme.Radius.dPadBlock, yRadius: Theme.Radius.dPadBlock)
+            Theme.Palette.key.setFill()
+            path.fill()
+            if pressed == direction {
+                Theme.drawActive(path)
+                // ブロックは円で切り取るので、円の縁の部分にも輪郭線を引く
+                NSGraphicsContext.saveGraphicsState()
+                NSBezierPath(rect: block).addClip()
+                let inset = Theme.Line.emphasis / 2
+                Theme.drawRing(NSBezierPath(ovalIn: NSRect(x: center.x - radius + inset, y: center.y - radius + inset, width: (radius - inset) * 2, height: (radius - inset) * 2)))
+                NSGraphicsContext.restoreGraphicsState()
+            }
             drawArrow(direction, in: block)
         }
         NSGraphicsContext.restoreGraphicsState()
@@ -103,7 +113,7 @@ final class DPadView: NSView {
 
     private func blockRect(_ direction: ArrowDirection) -> NSRect {
         let third = radius * 2 / 3
-        let inset: CGFloat = 1
+        let inset = Theme.Space.dPadBlockInset
         let half = third / 2
         // 円の外まで伸ばして、円で切り取る
         switch direction {
@@ -115,8 +125,8 @@ final class DPadView: NSView {
     }
 
     private func drawArrow(_ direction: ArrowDirection, in block: NSRect) {
-        let color: NSColor = pressed == direction ? .white : (isEnabled ? .labelColor : .tertiaryLabelColor)
-        let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        let color = pressed == direction ? Theme.Palette.accent : (isEnabled ? Theme.Palette.text : Theme.Palette.tertiaryText)
+        let configuration = NSImage.SymbolConfiguration(pointSize: Theme.FontSize.dPadArrow, weight: .semibold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
         guard let image = NSImage(systemSymbolName: direction.symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)

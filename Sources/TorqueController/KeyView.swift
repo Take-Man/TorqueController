@@ -10,11 +10,20 @@ final class ModeBackgroundView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSGraphicsContext.current?.cgContext.setAlpha(isDimmed ? KeyView.dimmedAlpha : 1)
-        NSColor.controlColor.setFill()
+        NSGraphicsContext.current?.cgContext.setAlpha(isDimmed ? Theme.Palette.dimmedAlpha : 1)
+        Theme.Palette.key.setFill()
         for frame in keyFrames {
-            NSBezierPath(roundedRect: frame, xRadius: 8, yRadius: 8).fill()
+            NSBezierPath(roundedRect: frame, xRadius: Theme.Radius.key, yRadius: Theme.Radius.key).fill()
         }
+    }
+}
+
+/// 選択中の切替キーを示す輪。切替のときにキーの文字の下を滑る。
+final class ModeHighlightView: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        Theme.drawActive(Theme.ringPath(in: bounds, cornerRadius: Theme.Radius.key))
     }
 }
 
@@ -26,9 +35,9 @@ final class KeyView: NSView {
     var symbolName: String? {
         didSet { needsDisplay = true }
     }
-    var symbolSize: CGFloat = 18
-    var cornerRadius: CGFloat = 8
-    /// 枠と文字の色で示す印。背景を塗らないので、押したときの反応と紛れない。
+    var symbolSize = Theme.FontSize.keySymbol
+    var cornerRadius = Theme.Radius.key
+    /// 輪郭線と文字の色で示す印。淡い塗りがないので、押したときの反応と紛れない。
     var isMarked = false {
         didSet { needsDisplay = true }
     }
@@ -39,6 +48,10 @@ final class KeyView: NSView {
     /// 最後に離したときの連続クリック数。
     private(set) var clickCount = 1
     var isSelected = false {
+        didSet { needsDisplay = true }
+    }
+    /// 選択が固定されている。選択中の輪の内側にもう1本、輪を描く。
+    var isLocked = false {
         didSet { needsDisplay = true }
     }
     var isEnabled = true {
@@ -61,8 +74,6 @@ final class KeyView: NSView {
     var onEnd: (@MainActor (CGVector, Bool) -> Void)?
 
     private static let trackingInterval: TimeInterval = 1.0 / 60
-    /// 不透明なパネルの上に重ねるので、不透明度を下げると明度が下がって見える。
-    static let dimmedAlpha: CGFloat = 0.3
 
     private var isPressed = false {
         didSet { needsDisplay = true }
@@ -89,6 +100,7 @@ final class KeyView: NSView {
         guard isEnabled else { return }
         isTracking = true
         isPressed = true
+        showPressRing()
         clickCount = event.clickCount
         startLocation = NSEvent.mouseLocation
         onBegin?(startLocation)
@@ -130,23 +142,25 @@ final class KeyView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSGraphicsContext.current?.cgContext.setAlpha(isDimmed ? Self.dimmedAlpha : 1)
-        if fillsBackground || isPressed {
-            let background: NSColor = isPressed || isSelected ? .controlAccentColor : .controlColor
-            background.setFill()
+        NSGraphicsContext.current?.cgContext.setAlpha(isDimmed ? Theme.Palette.dimmedAlpha : 1)
+        if fillsBackground {
+            Theme.Palette.key.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
         }
-
-        var color: NSColor = isPressed || isSelected ? .white : (isEnabled || isDimmed ? .labelColor : .tertiaryLabelColor)
-        if isMarked {
-            if !isPressed {
-                color = .controlAccentColor
-            }
-            NSColor.controlAccentColor.setStroke()
-            let frame = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7)
-            frame.lineWidth = 2
-            frame.stroke()
+        // fillsBackground が false のキーの選択中の輪は、ModeHighlightView が受け持つ
+        if isPressed || (isSelected && fillsBackground) {
+            Theme.drawActive(Theme.ringPath(in: bounds, cornerRadius: cornerRadius))
+        } else if isMarked {
+            Theme.drawRing(Theme.ringPath(in: bounds, cornerRadius: cornerRadius))
         }
+        if isLocked {
+            let inset = Theme.Line.emphasis / 2 + Theme.Space.lockedRing
+            Theme.drawRing(Theme.ringPath(in: bounds, cornerRadius: cornerRadius, inset: inset))
+        }
+
+        let color: NSColor = isPressed || isSelected || isMarked
+            ? Theme.Palette.accent
+            : (isEnabled || isDimmed ? Theme.Palette.text : Theme.Palette.tertiaryText)
         if let symbolName {
             drawSymbol(symbolName, color: color)
         } else {
@@ -155,13 +169,50 @@ final class KeyView: NSView {
         drawHints(color: color)
     }
 
+    /// 押した瞬間の反応。キーの輪郭からアクセント色の輪が少し広がって消える。
+    func showPressRing() {
+        guard let layer else { return }
+        func path(outset: CGFloat) -> CGPath {
+            let radius = cornerRadius + outset
+            return CGPath(
+                roundedRect: layer.bounds.insetBy(dx: -outset, dy: -outset),
+                cornerWidth: radius,
+                cornerHeight: radius,
+                transform: nil
+            )
+        }
+        let ring = CAShapeLayer()
+        ring.frame = layer.bounds
+        ring.fillColor = nil
+        ring.lineWidth = Theme.Line.emphasis
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            ring.strokeColor = Theme.Palette.accent.cgColor
+        }
+        ring.path = path(outset: Theme.Space.pressRing)
+        ring.opacity = 0
+        layer.addSublayer(ring)
+
+        let grow = CABasicAnimation(keyPath: "path")
+        grow.fromValue = path(outset: 0)
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        let group = CAAnimationGroup()
+        group.animations = [grow, fade]
+        group.duration = Theme.Motion.pressRing
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { ring.removeFromSuperlayer() }
+        ring.add(group, forKey: nil)
+        CATransaction.commit()
+    }
+
     private func drawLabel(color: NSColor) {
-        var fontSize: CGFloat = label.count > 2 ? 15 : 22
+        var fontSize = label.count > 2 ? Theme.FontSize.keyLongLabel : Theme.FontSize.keyLabel
         let attributes = { (size: CGFloat) -> [NSAttributedString.Key: Any] in
             [.font: NSFont.systemFont(ofSize: size), .foregroundColor: color]
         }
         // キーの幅に収まらないときは文字を小さくする
-        let availableWidth = bounds.width - 8
+        let availableWidth = bounds.width - Theme.Space.keyLabelInset * 2
         let width = NSAttributedString(string: label, attributes: attributes(fontSize)).size().width
         if width > availableWidth {
             fontSize *= availableWidth / width
@@ -183,18 +234,18 @@ final class KeyView: NSView {
             in: NSRect(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2, width: size.width, height: size.height),
             from: .zero,
             operation: .sourceOver,
-            fraction: isDimmed ? Self.dimmedAlpha : 1
+            fraction: isDimmed ? Theme.Palette.dimmedAlpha : 1
         )
     }
 
     private func drawHints(color: NSColor) {
         for (direction, hint) in hints {
             let text = NSAttributedString(string: hint, attributes: [
-                .font: NSFont.systemFont(ofSize: 10),
-                .foregroundColor: color.withAlphaComponent(0.7),
+                .font: NSFont.systemFont(ofSize: Theme.FontSize.keyHint),
+                .foregroundColor: color.withAlphaComponent(Theme.Palette.hintAlpha),
             ])
             let size = text.size()
-            let inset: CGFloat = 4
+            let inset = Theme.Space.keyHintInset
             let origin = switch direction {
             case .left: NSPoint(x: inset, y: bounds.midY - size.height / 2)
             case .right: NSPoint(x: bounds.maxX - inset - size.width, y: bounds.midY - size.height / 2)

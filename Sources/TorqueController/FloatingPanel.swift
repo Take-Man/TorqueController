@@ -37,20 +37,127 @@ final class FloatingPanel: NSPanel {
     }
 }
 
-/// パネルの土台。ドラッグでパネルが動かないようにする。
+/// ぼかしを見せる形。角丸の四角から cutout を除いた範囲。
+struct PanelBackgroundShape: Equatable, Sendable {
+    /// 下の角が見えないよう、下へ伸ばす長さ。
+    var bottomOverhang: CGFloat = 0
+    /// 別のパネルと重なる範囲。重なりが濃く見えないよう、ぼかしを見せない。
+    var cutout: CGRect?
+
+    /// 今の色で、この形を rect に塗る。
+    func fill(_ rect: NSRect) {
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let radius = Theme.Radius.panel
+        NSBezierPath(
+            roundedRect: NSRect(x: 0, y: -bottomOverhang, width: rect.width, height: rect.height + bottomOverhang),
+            xRadius: radius,
+            yRadius: radius
+        ).addClip()
+        let path = NSBezierPath(rect: rect)
+        if let cutout {
+            path.append(NSBezierPath(roundedRect: cutout, xRadius: radius, yRadius: radius))
+            path.windingRule = .evenOdd
+        }
+        path.fill()
+    }
+
+    /// NSVisualEffectView のマスク。不透明な部分だけにぼかしを見せる。
+    func maskImage(size: NSSize) -> NSImage {
+        NSImage(size: size, flipped: false) { rect in
+            NSColor.black.setFill()
+            fill(rect)
+            return true
+        }
+    }
+}
+
+/// パネルの土台。半透明のぼかしを敷き、ドラッグでパネルが動かないようにする。
 final class PanelBackgroundView: NSView {
+    /// ぼかしはクリックを受けない。
+    private final class EffectView: NSVisualEffectView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    /// ぼかしの上に重ねる色。マスクはぼかしだけに効くので、同じ形を自分で塗る。
+    private final class VeilView: NSView {
+        var shape = PanelBackgroundShape() {
+            didSet { needsDisplay = true }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func draw(_ dirtyRect: NSRect) {
+            Theme.Palette.panelVeil.setFill()
+            shape.fill(bounds)
+        }
+    }
+
+    private let effectView = EffectView()
+    private let veilView = VeilView()
+    private var maskSize = NSSize.zero
+
+    var shape = PanelBackgroundShape() {
+        didSet {
+            veilView.shape = shape
+            fitContent(force: true)
+        }
+    }
+    /// 土台いっぱいに広げる中身。
+    var content: NSView? {
+        didSet {
+            if let content {
+                addSubview(content)
+            }
+            fitContent()
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        effectView.material = Theme.panelMaterial
+        effectView.blendingMode = .behindWindow
+        // パネルはキーウィンドウにならないので、ウィンドウの状態に従うとぼかしが消える
+        effectView.state = .active
+        addSubview(effectView)
+        addSubview(veilView)
+        fitContent()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override var mouseDownCanMoveWindow: Bool { false }
 
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 12, yRadius: 12).fill()
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        fitContent()
+    }
+
+    override func setBoundsSize(_ newSize: NSSize) {
+        super.setBoundsSize(newSize)
+        fitContent()
+    }
+
+    /// 倍率は bounds で与えるので、中身は bounds に合わせる。
+    private func fitContent(force: Bool = false) {
+        effectView.frame = bounds
+        veilView.frame = bounds
+        content?.frame = bounds
+        if force || maskSize != bounds.size {
+            maskSize = bounds.size
+            effectView.maskImage = shape.maskImage(size: bounds.size)
+            // 影はウィンドウの中身の形から作るので、形が変わったら作り直す
+            window?.invalidateShadow()
+        }
     }
 }
 
 /// パネルの余白に置く、パネルを掴むための持ち手。6個の点を描く。
 final class GripView: NSView {
     private static let dotDiameter: CGFloat = 3
-    private static let dotSpacing: CGFloat = 7
+    private static let dotSpacing = Theme.Space.gripDotSpacing
 
     /// true なら縦に長い配置(2列×3行)。false なら横に長い配置(3列×2行)。
     var isVertical = false
@@ -97,7 +204,7 @@ final class GripView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.tertiaryLabelColor.setFill()
+        Theme.Palette.tertiaryText.setFill()
         let columns = isVertical ? 2 : 3
         let rows = isVertical ? 3 : 2
         for column in 0..<columns {

@@ -15,9 +15,8 @@ private final class PanelChoice {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private static let keyboardGap: CGFloat = 6
-    /// QWERTY の下に、入力欄を置く分だけ空ける。
-    private static let qwertyLift: CGFloat = 56
+    private static let keyboardGap = Theme.Space.panelGap
+    private static let qwertyLift = Theme.Space.qwertyLift
     private var flickPanel: FlickPanel?
     private var compactPanel: CompactPanel?
     private var permissionTimer: Timer?

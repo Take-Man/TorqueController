@@ -3,14 +3,19 @@ import TorqueEngine
 
 /// 候補の展開の動き。列ごとに少しずつ遅らせ、イーズアウトで中心から広がる。
 enum RevealAnimation {
-    static let duration: CFTimeInterval = 0.26
-    static let columnDelay: CFTimeInterval = 0.025
+    static let duration = Theme.Motion.candidateReveal
+    static let columnDelay = Theme.Motion.candidateColumnDelay
     /// 動き始めの大きさ。
     static let startScale: CGFloat = 0.25
 
     /// 経過時間 elapsed での、列の進み具合(0 から 1)。
     static func progress(elapsed: CFTimeInterval, column: Int) -> CGFloat {
         let linear = (elapsed - Double(column) * columnDelay) / duration
+        return easeOut(linear)
+    }
+
+    /// 進み具合(0 から 1。範囲の外は端の値)をイーズアウトに直す。
+    static func easeOut(_ linear: Double) -> CGFloat {
         let clamped = min(1, max(0, linear))
         return CGFloat(1 - pow(1 - clamped, 3))
     }
@@ -23,10 +28,10 @@ enum RevealAnimation {
 /// 候補の同心円の重ね表示。中心の円は入力欄のスコープを囲い、中は透けて見える。
 final class CandidateOverlayView: NSView {
     static let backSymbol = "arrow.uturn.left"
-    private static let font = NSFont.systemFont(ofSize: 15)
+    private static let font = NSFont.systemFont(ofSize: Theme.FontSize.candidate)
     private static let minColumnWidth: CGFloat = 36
     private static let maxColumnWidth: CGFloat = 140
-    private static let cellPadding: CGFloat = 14
+    private static let cellPadding = Theme.Space.candidateCell
 
     var onRegionClicked: (@MainActor (CandidateLayout.Region) -> Void)?
 
@@ -52,7 +57,7 @@ final class CandidateOverlayView: NSView {
         self.session = session
         let columns = session.columns.indices.map { index in
             let visible = session.visibleCandidates(column: index)
-            let textWidth = visible.map { Self.text($0.surface, color: .labelColor).size().width }.max() ?? 0
+            let textWidth = visible.map { Self.text($0.surface, color: Theme.Palette.text).size().width }.max() ?? 0
             return CandidateLayout.Column(
                 width: min(Self.maxColumnWidth, max(Self.minColumnWidth, textWidth + Self.cellPadding)),
                 rowCount: visible.count,
@@ -154,7 +159,7 @@ final class CandidateOverlayView: NSView {
         for (column, radius) in layout.ringRadii.enumerated() {
             let progress = reveal(column: column)
             guard progress > 0 else { continue }
-            NSColor.controlAccentColor.withAlphaComponent(0.25 * progress).setStroke()
+            Theme.Palette.accentDecoration(progress: progress).setStroke()
             let angle = layout.arcAngle(column: column)
             let path = NSBezierPath()
             let current = layout.scopeRadius + (radius - layout.scopeRadius) * progress
@@ -172,7 +177,7 @@ final class CandidateOverlayView: NSView {
         for column in layout.columns.indices {
             let progress = reveal(column: column)
             guard progress > 0 else { continue }
-            NSColor.controlAccentColor.withAlphaComponent(0.25 * progress).setStroke()
+            Theme.Palette.accentDecoration(progress: progress).setStroke()
             var rects = (0..<layout.columns[column].rowCount).map { layout.cellRect(column: column, row: $0) }
             if let next = layout.nextRect(column: column) {
                 rects.append(next)
@@ -210,23 +215,25 @@ final class CandidateOverlayView: NSView {
             context.translateBy(x: -rect.midX, y: -rect.midY)
         }
         let isHovered = hovered == region
-        (isHovered ? NSColor.controlAccentColor : NSColor.windowBackgroundColor).setFill()
-        let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+        Theme.Palette.guideBase.setFill()
+        let path = NSBezierPath(roundedRect: rect, xRadius: Theme.Radius.candidate, yRadius: Theme.Radius.candidate)
         path.fill()
-        NSColor.separatorColor.setStroke()
-        path.stroke()
-        content(rect, isHovered ? .white : .labelColor)
+        if isHovered {
+            Theme.drawActive(path)
+        } else {
+            Theme.Palette.separator.setStroke()
+            path.stroke()
+        }
+        content(rect, isHovered ? Theme.Palette.accent : Theme.Palette.text)
         context.restoreGState()
     }
 
     private func drawCenter(_ layout: CandidateLayout) {
         let radius = layout.scopeRadius
         let circle = NSBezierPath(ovalIn: NSRect(x: layout.center.x - radius, y: layout.center.y - radius, width: radius * 2, height: radius * 2))
-        NSColor.controlAccentColor.withAlphaComponent(hovered == .center ? 0.25 : 0.08).setFill()
+        (hovered == .center ? Theme.Palette.accentHover : Theme.Palette.accentTint).setFill()
         circle.fill()
-        NSColor.controlAccentColor.setStroke()
-        circle.lineWidth = 2
-        circle.stroke()
+        Theme.drawRing(circle)
     }
 
     /// 戻す領域。中心の円の左側に接する、90度の扇形。
@@ -245,15 +252,19 @@ final class CandidateOverlayView: NSView {
         path.appendArc(withCenter: layout.center, radius: inner, startAngle: middleAngle + 45, endAngle: middleAngle - 45, clockwise: true)
         path.close()
         let isHovered = hovered == .back
-        (isHovered ? NSColor.controlAccentColor : NSColor.windowBackgroundColor).setFill()
+        Theme.Palette.guideBase.setFill()
         path.fill()
-        NSColor.separatorColor.setStroke()
-        path.stroke()
+        if isHovered {
+            Theme.drawActive(path)
+        } else {
+            Theme.Palette.separator.setStroke()
+            path.stroke()
+        }
 
         let middle = (inner + outer) / 2
         let areaX = layout.isMirrored ? layout.center.x + middle - 10 : layout.center.x - middle - 10
         let area = CGRect(x: areaX, y: layout.center.y - 10, width: 20, height: 20)
-        Self.drawSymbol(layout.isMirrored ? "arrow.uturn.right" : Self.backSymbol, in: area, color: isHovered ? .white : .secondaryLabelColor, fraction: progress)
+        Self.drawSymbol(layout.isMirrored ? "arrow.uturn.right" : Self.backSymbol, in: area, color: isHovered ? Theme.Palette.accent : Theme.Palette.secondaryText, fraction: progress)
     }
 
     private static func text(_ string: String, color: NSColor) -> NSAttributedString {
@@ -270,12 +281,12 @@ final class CandidateOverlayView: NSView {
     private static func draw(_ string: String, in rect: CGRect, color: NSColor) {
         let text = text(string, color: color)
         let height = text.size().height
-        text.draw(in: CGRect(x: rect.minX + 3, y: rect.midY - height / 2, width: rect.width - 6, height: height))
+        text.draw(in: CGRect(x: rect.minX + Theme.Space.candidateText, y: rect.midY - height / 2, width: rect.width - Theme.Space.candidateText * 2, height: height))
     }
 
     /// NSImage はコンテキストの不透明度を無視するので、fraction で指定する。
     private static func drawSymbol(_ name: String, in rect: CGRect, color: NSColor, fraction: CGFloat) {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let configuration = NSImage.SymbolConfiguration(pointSize: Theme.FontSize.candidateSymbol, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
         guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)

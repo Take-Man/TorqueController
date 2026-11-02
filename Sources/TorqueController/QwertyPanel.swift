@@ -43,8 +43,8 @@ enum QwertyKey: Equatable {
 final class QwertyPanel {
     private enum Metrics {
         static let keySide: CGFloat = 44
-        static let gap: CGFloat = 4
-        static let padding: CGFloat = 8
+        static let gap = Theme.Space.qwertyKeyGap
+        static let padding = Theme.Space.panelPadding
     }
 
     /// 押されたキー。シフトキーはここで処理して伝えない。
@@ -191,6 +191,8 @@ final class QwertyPanel {
                 view.symbolName = "arrow.right.to.line"
             case .shift:
                 view.symbolName = shift.shiftSymbol
+                view.isSelected = shift != .off
+                view.isLocked = shift == .locked
             }
         }
     }

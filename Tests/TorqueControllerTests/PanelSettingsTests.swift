@@ -121,12 +121,26 @@ private func makeSettings() -> PanelSettings {
     let settings = makeSettings()
     settings.setOpacity(0.75, of: .qwerty)
     let menu = AppDelegate(settings: settings).makeAppMenu()
-    let opacity = try #require(menu.item(withTitle: "パネルの不透明度を変更"))
-    #expect(menu.item(withTitle: "パネルの倍率を変更") != nil)
+    let opacity = try #require(menu.item(withTitle: "不透明度"))
+    #expect(menu.item(withTitle: "倍率") != nil)
     #expect(opacity.submenu?.items.map(\.title) == ["コンパクト", "フリック", "QWERTY"])
     #expect(checked(in: opacity.submenu?.item(withTitle: "QWERTY")) == ["75%"])
     let quit = try #require(menu.item(withTitle: "TorqueController を終了"))
     #expect(quit.action == #selector(NSApplication.terminate(_:)))
+}
+
+@MainActor @Test func appMenuIsGroupedIntoSectionsInOrder() {
+    let menu = AppDelegate(settings: makeSettings()).makeAppMenu()
+    #expect(menu.items.filter(\.isSectionHeader).map(\.title) == ["全パネル", "配置と外観", "フリックパネル", "ショートカット"])
+    // 問題の項目は環境で変わるので、最初の見出しから後を比べる
+    let start = menu.items.firstIndex(where: \.isSectionHeader) ?? 0
+    #expect(menu.items[start...].filter { !$0.isSeparatorItem && !$0.isSectionHeader }.map(\.title) == [
+        "全パネルを隠す", "切り替える隅", "隅に置く時間",
+        "不透明度", "倍率", "画面内に収める", "位置を初期に戻す",
+        "自動で表示", "自動で隠す", "Electron アプリも判定", "隠れる候補を左右反転",
+        "設定を開く…", "設定を読み直す",
+        "TorqueController を終了",
+    ])
 }
 
 @MainActor @Test func rightClickGoesToHandlerAndNotToKeys() throws {

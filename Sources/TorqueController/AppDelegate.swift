@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.messageText = "ホットコーナーと重なっています"
         let names = conflicts.map(\.label).joined(separator: "、")
-        alert.informativeText = "\(names)の隅には macOS のホットコーナーが設定されています。隅にカーソルを置くと両方が反応します。TorqueController のメニューの「オン/オフの隅」か、システム設定のホットコーナーで、別の隅に変えてください。"
+        alert.informativeText = "\(names)の隅には macOS のホットコーナーが設定されています。隅にカーソルを置くと両方が反応します。TorqueController のメニューの「切り替える隅」か、システム設定のホットコーナーで、別の隅に変えてください。"
         NSApp.activate()
         alert.runModal()
     }
@@ -269,35 +269,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let trusted = AXIsProcessTrusted()
-        addInfoItem(to: menu, "アクセシビリティ: \(trusted ? "許可済み" : "未許可")")
-        addInfoItem(to: menu, "辞書: \(isDictionaryLoaded ? "読み込み済み" : "読み込めません(変換は使えません)")")
-        menu.addItem(.separator())
-        addActionItem(to: menu, "フリックパネルを自動で表示", #selector(toggleAutoShow)).state = focusPolicy.autoShow ? .on : .off
-        addActionItem(to: menu, "フリックパネルを自動で隠す", #selector(toggleAutoHide)).state = focusPolicy.autoHide ? .on : .off
-        addActionItem(to: menu, "Electron アプリの入力欄も判定する", #selector(toggleElectronApps)).state = focusMonitor.enablesElectronApps ? .on : .off
-        menu.addItem(.separator())
+        // 問題があるときだけ、先頭に出す
+        let isTrusted = AXIsProcessTrusted()
+        if !isTrusted {
+            addActionItem(to: menu, "アクセシビリティを許可…", #selector(openAccessibilitySettings))
+        }
+        if !isDictionaryLoaded {
+            addInfoItem(to: menu, "辞書を読み込めません(変換不可)")
+        }
+        if !isTrusted || !isDictionaryLoaded {
+            menu.addItem(.separator())
+        }
+
+        menu.addItem(.sectionHeader(title: "全パネル"))
         addActionItem(to: menu, arePanelsVisible ? "全パネルを隠す" : "全パネルを表示", #selector(togglePanelsFromMenu))
-        menu.addItem(makeSubmenu("オン/オフの隅", ScreenCorner.allCases.map { corner in
+        menu.addItem(makeSubmenu("切り替える隅", ScreenCorner.allCases.map { corner in
             (corner.label, corner.rawValue, settings.corners.contains(corner))
         }, action: #selector(toggleCorner(_:))))
         menu.addItem(makeSubmenu("隅に置く時間", PanelSettings.dwellChoices.map { value in
             ("\(value) 秒", value, settings.dwell == value)
         }, action: #selector(selectDwell(_:))))
-        menu.addItem(makePerPanelItem("パネルの倍率を変更", makeScaleItem(_:for:)))
-        menu.addItem(makePerPanelItem("パネルの不透明度を変更", makeOpacityItem(_:for:)))
-        addActionItem(to: menu, "パネルとガイドを画面内に収める", #selector(toggleKeepsInScreen)).state = settings.keepsInScreen ? .on : .off
-        addActionItem(to: menu, "候補が隠れるときに左右反転する", #selector(toggleMirrorsCandidates)).state = settings.mirrorsCandidates ? .on : .off
-        addActionItem(to: menu, "パネルの位置を初期に戻す", #selector(resetPositions))
         menu.addItem(.separator())
-        addActionItem(to: menu, "ショートカットの設定を開く…", #selector(openShortcutSettings))
-        addActionItem(to: menu, "ショートカットの設定を読み直す", #selector(reloadShortcutSettings))
+
+        menu.addItem(.sectionHeader(title: "配置と外観"))
+        menu.addItem(makePerPanelItem("不透明度", makeOpacityItem(_:for:)))
+        menu.addItem(makePerPanelItem("倍率", makeScaleItem(_:for:)))
+        addActionItem(to: menu, "画面内に収める", #selector(toggleKeepsInScreen)).state = settings.keepsInScreen ? .on : .off
+        addActionItem(to: menu, "位置を初期に戻す", #selector(resetPositions))
         menu.addItem(.separator())
-        if !trusted {
-            let settings = NSMenuItem(title: "システム設定を開く…", action: #selector(openAccessibilitySettings), keyEquivalent: "")
-            settings.target = self
-            menu.addItem(settings)
-        }
+
+        menu.addItem(.sectionHeader(title: "フリックパネル"))
+        addActionItem(to: menu, "自動で表示", #selector(toggleAutoShow)).state = focusPolicy.autoShow ? .on : .off
+        addActionItem(to: menu, "自動で隠す", #selector(toggleAutoHide)).state = focusPolicy.autoHide ? .on : .off
+        addActionItem(to: menu, "Electron アプリも判定", #selector(toggleElectronApps)).state = focusMonitor.enablesElectronApps ? .on : .off
+        addActionItem(to: menu, "隠れる候補を左右反転", #selector(toggleMirrorsCandidates)).state = settings.mirrorsCandidates ? .on : .off
+        menu.addItem(.separator())
+
+        menu.addItem(.sectionHeader(title: "ショートカット"))
+        addActionItem(to: menu, "設定を開く…", #selector(openShortcutSettings))
+        addActionItem(to: menu, "設定を読み直す", #selector(reloadShortcutSettings))
+        menu.addItem(.separator())
+
         let quit = NSMenuItem(title: "TorqueController を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         quit.target = NSApp
         menu.addItem(quit)

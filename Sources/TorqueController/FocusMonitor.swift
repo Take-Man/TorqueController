@@ -4,7 +4,11 @@ import Carbon
 /// フォーカスしている要素の種類。
 enum FocusKind: Equatable {
     case none, text, secure
+    /// 文字入力欄からここへ移っても、フォーカスが外れたとは判断しない要素。これだけでは文字入力欄とは判定しない。
+    case transient
 
+    /// 入力できる状態のままフォーカスが移ったように見えるロール(Chrome の検索候補の文字など)。
+    private static let transientRoles: Set<String> = ["AXStaticText"]
     private static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
     /// 選択範囲を設定できれば文字入力欄とみなすロール(HTML の編集可能な領域など)。
     /// Chrome はチェックボックスでも設定可能と答えるので、ロールを絞る。
@@ -18,6 +22,9 @@ enum FocusKind: Equatable {
         guard let role else { return .none }
         if textRoles.contains(role) {
             return .text
+        }
+        if transientRoles.contains(role) {
+            return .transient
         }
         return hasSettableSelection && editableContainerRoles.contains(role) ? .text : .none
     }
@@ -38,7 +45,15 @@ struct FocusPolicy: Equatable {
     private var noneObservations = 0
 
     /// 定期的な観測を反映する。表示に関わる変化があれば true。
-    mutating func observe(kind newKind: FocusKind, elementChanged: Bool) -> Bool {
+    mutating func observe(kind observed: FocusKind, elementChanged: Bool) -> Bool {
+        var newKind = observed
+        if observed == .transient {
+            if kind == .text {
+                noneObservations = 0
+                return false
+            }
+            newKind = .none
+        }
         if newKind == .none, kind != .none {
             noneObservations += 1
             if noneObservations < Self.requiredNoneObservations {
@@ -53,7 +68,7 @@ struct FocusPolicy: Equatable {
             if autoShow {
                 flickVisible = true
             }
-        case .none:
+        case .none, .transient:
             if autoHide {
                 flickVisible = false
             }
@@ -107,6 +122,12 @@ final class FocusMonitor {
         }
         let isSecureInput = IsSecureEventInputEnabled()
         let kind = FocusKind.classify(role: role, subrole: subrole, hasSettableSelection: isSettable.boolValue, isSecureInput: isSecureInput)
+        // 一時的に移っただけなら、元の要素を覚えておく。戻ってきても要素の変化として扱わない
+        guard kind != .transient else {
+            onObserve?(kind, false)
+            return
+        }
+
         let changed: Bool
         switch (element, lastElement) {
         case (nil, nil): changed = false

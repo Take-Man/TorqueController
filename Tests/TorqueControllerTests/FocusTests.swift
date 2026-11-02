@@ -13,7 +13,8 @@ private func classify(_ role: String?, _ subrole: String? = nil, settable: Bool 
     #expect(classify("AXButton") == .none)
     // Chrome はチェックボックスでも選択範囲を設定可能と答える
     #expect(classify("AXCheckBox", settable: true) == .none)
-    #expect(classify("AXStaticText") == .none)
+    #expect(classify("AXStaticText") == .transient)
+    #expect(classify("AXStaticText", secure: true) == .secure)
     #expect(classify(nil) == .none)
 }
 
@@ -93,4 +94,41 @@ private func classify(_ role: String?, _ subrole: String? = nil, settable: Bool 
     let same = policy.observe(kind: .secure, elementChanged: false)
     #expect(!same)
     #expect(policy.flickVisible)
+}
+
+@Test func transientFocusKeepsTextFocusAndManualState() {
+    var policy = FocusPolicy()
+    policy.autoHide = true
+    _ = policy.observe(kind: .text, elementChanged: true)
+    for _ in 0..<5 {
+        let changed = policy.observe(kind: .transient, elementChanged: false)
+        #expect(!changed)
+    }
+    #expect(policy.kind == .text)
+    #expect(policy.flickVisible)
+
+    // 手動で隠したあとに候補へ移って戻っても、再び出ない
+    policy.userToggledFlick()
+    _ = policy.observe(kind: .transient, elementChanged: false)
+    let back = policy.observe(kind: .text, elementChanged: false)
+    #expect(!back)
+    #expect(!policy.flickVisible)
+}
+
+@Test func transientFocusAloneIsNotTextInput() {
+    var policy = FocusPolicy()
+    let changed = policy.observe(kind: .transient, elementChanged: false)
+    #expect(!changed)
+    #expect(policy.kind == .none)
+    #expect(!policy.flickVisible)
+}
+
+@Test func leavingTransientForOtherElementCountsAsLeaving() {
+    var policy = FocusPolicy()
+    policy.autoHide = true
+    _ = policy.observe(kind: .text, elementChanged: true)
+    _ = policy.observe(kind: .transient, elementChanged: false)
+    _ = policy.observe(kind: .none, elementChanged: true)
+    _ = policy.observe(kind: .none, elementChanged: false)
+    #expect(!policy.flickVisible)
 }

@@ -43,6 +43,112 @@ private func makeSettings() -> PanelSettings {
     #expect(settings.scale(of: .compact) == 0.7)
 }
 
+@Test func opacityDefaultsToOpaqueAndIsRestoredPerPanel() {
+    let settings = makeSettings()
+    for panel in PanelID.allCases {
+        #expect(settings.opacity(of: panel) == 1)
+    }
+    settings.setOpacity(0.5, of: .compact)
+    settings.setOpacity(0.75, of: .qwerty)
+    let restored = PanelSettings(defaults: settings.defaults)
+    #expect(restored.opacity(of: .compact) == 0.5)
+    #expect(restored.opacity(of: .flick) == 1)
+    #expect(restored.opacity(of: .qwerty) == 0.75)
+    #expect(PanelSettings.opacityChoices == [1, 0.9, 0.75, 0.5])
+}
+
+@Test func opacityIsClampedToAllowedRange() {
+    let settings = makeSettings()
+    settings.setOpacity(3, of: .flick)
+    #expect(settings.opacity(of: .flick) == 1)
+    settings.setOpacity(0.1, of: .flick)
+    #expect(settings.opacity(of: .flick) == 0.5)
+    settings.setOpacity(0, of: .flick)
+    #expect(settings.opacity(of: .flick) == 1)
+}
+
+@MainActor @Test func opacityAppliesToPanelsButNotToGuidesOrCandidates() {
+    let flick = FlickPanel(origin: .zero, converter: nil, learningURL: URL(fileURLWithPath: "/dev/null"))
+    flick.setOpacity(0.5)
+    #expect(flick.panel.alphaValue == 0.5)
+    #expect(flick.compositionPanel.alphaValue == 0.5)
+    #expect(flick.guidePanel.alphaValue == 1)
+    #expect(flick.overlayPanel.alphaValue == 1)
+
+    let compact = CompactPanel(origin: .zero, qwertyOrigin: .zero, shortcuts: [])
+    compact.setOpacity(0.75)
+    compact.qwerty.setOpacity(0.9)
+    #expect(compact.panel.alphaValue == 0.75)
+    #expect(compact.qwerty.panel.alphaValue == 0.9)
+    #expect(compact.radialPanel.alphaValue == 1)
+}
+
+/// 項目のアクションを、メニューから選んだときと同じように実行する。
+@MainActor private func choose(_ title: String, in item: NSMenuItem?) throws {
+    let choice = try #require(item?.submenu?.item(withTitle: title))
+    let target = try #require(choice.target as? NSObject)
+    target.perform(choice.action, with: choice)
+}
+
+@MainActor private func checked(in item: NSMenuItem?) -> [String] {
+    (item?.submenu?.items ?? []).filter { $0.state == .on }.map(\.title)
+}
+
+@MainActor @Test func gripMenuChangesOnlyThatPanelAndMarksCurrentValue() throws {
+    let settings = makeSettings()
+    let delegate = AppDelegate(settings: settings)
+
+    var menu = delegate.makePanelMenu(for: .flick)
+    #expect(menu.items.map(\.title) == ["不透明度", "倍率"])
+    #expect(menu.items[0].submenu?.items.map(\.title) == ["100%", "90%", "75%", "50%"])
+    #expect(checked(in: menu.items[0]) == ["100%"])
+    #expect(checked(in: menu.items[1]) == ["100%"])
+
+    try choose("50%", in: menu.items[0])
+    try choose("130%", in: menu.items[1])
+    #expect(settings.opacity(of: .flick) == 0.5)
+    #expect(settings.scale(of: .flick) == 1.3)
+    #expect(settings.opacity(of: .compact) == 1)
+    #expect(settings.scale(of: .qwerty) == 1)
+
+    menu = delegate.makePanelMenu(for: .flick)
+    #expect(checked(in: menu.items[0]) == ["50%"])
+    #expect(checked(in: menu.items[1]) == ["130%"])
+    #expect(checked(in: delegate.makePanelMenu(for: .compact).items[0]) == ["100%"])
+}
+
+@MainActor @Test func appMenuHasOpacityForEachPanelAndQuit() throws {
+    let settings = makeSettings()
+    settings.setOpacity(0.75, of: .qwerty)
+    let menu = AppDelegate(settings: settings).makeAppMenu()
+    let opacity = try #require(menu.item(withTitle: "パネルの不透明度を変更"))
+    #expect(menu.item(withTitle: "パネルの倍率を変更") != nil)
+    #expect(opacity.submenu?.items.map(\.title) == ["コンパクト", "フリック", "QWERTY"])
+    #expect(checked(in: opacity.submenu?.item(withTitle: "QWERTY")) == ["75%"])
+    let quit = try #require(menu.item(withTitle: "TorqueController を終了"))
+    #expect(quit.action == #selector(NSApplication.terminate(_:)))
+}
+
+@MainActor @Test func rightClickGoesToHandlerAndNotToKeys() throws {
+    let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100))
+    let key = KeyView(label: "a")
+    key.frame = panel.contentRect(forFrameRect: panel.frame)
+    panel.contentView = key
+    var keyBegan = false
+    key.onBegin = { _ in keyBegan = true }
+    var menuRequests = 0
+    FloatingPanel.onRightClick = { _, _ in menuRequests += 1 }
+    defer { FloatingPanel.onRightClick = nil }
+
+    let event = try #require(NSEvent.mouseEvent(
+        with: .rightMouseDown, location: NSPoint(x: 50, y: 50), modifierFlags: [], timestamp: 0,
+        windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+    ))
+    panel.sendEvent(event)
+    #expect(menuRequests == 1)
+    #expect(!keyBegan)
+}
+
 @Test func cornersCanBeEmptyOrSeveral() {
     let settings = makeSettings()
     settings.corners = []

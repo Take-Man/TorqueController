@@ -56,10 +56,10 @@ final class CompactPanel {
         }
     }
 
-    private let panel: FloatingPanel
-    private let radialPanel: FloatingPanel
+    let panel: FloatingPanel
+    let radialPanel: FloatingPanel
     private let radialView = ShortcutRadialView()
-    private let qwerty: QwertyPanel
+    let qwerty: QwertyPanel
     private var modifierViews: [Modifier: KeyView] = [:]
     private let escapeView = KeyView(label: "esc")
     private let dPadView = DPadView()
@@ -173,6 +173,11 @@ final class CompactPanel {
 
     func setQwertyPlacement(origin: NSPoint, scale: CGFloat) {
         qwerty.setPlacement(origin: origin, scale: scale)
+    }
+
+    /// 修飾キーの同心円は、選ぶ瞬間に見えにくくしないよう常に不透明のまま。
+    func setOpacity(_ opacity: CGFloat) {
+        panel.alphaValue = opacity
     }
 
     /// パネルと、修飾キーからのドラッグで出す円の全体の範囲。パネルの左下が原点で、倍率をかける前の大きさ。

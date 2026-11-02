@@ -2,6 +2,9 @@ import AppKit
 
 /// クリックしても入力先のフォーカスを奪わないパネル。
 final class FloatingPanel: NSPanel {
+    /// 右クリックされたとき。全てのパネルで共通。
+    static var onRightClick: (@MainActor (NSEvent, NSView) -> Void)?
+
     init(contentRect: NSRect) {
         super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         level = .statusBar
@@ -14,6 +17,17 @@ final class FloatingPanel: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// 右クリックはキーに届けず、ここで受ける。左ボタンでキーを押している間は何もしない。
+    override func sendEvent(_ event: NSEvent) {
+        guard event.type == .rightMouseDown else {
+            super.sendEvent(event)
+            return
+        }
+        if NSEvent.pressedMouseButtons & 1 == 0, let contentView {
+            Self.onRightClick?(event, contentView)
+        }
+    }
 
     /// 倍率をかけて置く。中身は logicalSize の座標のまま描くので、倍率はビューの bounds で与える。
     func place(origin: NSPoint, logicalSize: NSSize, scale: CGFloat) {

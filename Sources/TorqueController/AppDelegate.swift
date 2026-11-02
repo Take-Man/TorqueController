@@ -1,20 +1,20 @@
 import AppKit
 import TorqueEngine
 
-/// 倍率のメニュー項目が持つ値。
-private final class ScaleChoice {
+/// 倍率と不透明度のメニュー項目が持つ値。
+private final class PanelChoice {
     let panel: PanelID
-    let scale: CGFloat
+    let value: CGFloat
 
-    init(panel: PanelID, scale: CGFloat) {
+    init(panel: PanelID, value: CGFloat) {
         self.panel = panel
-        self.scale = scale
+        self.value = value
     }
 }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private static let keyboardGap: CGFloat = 6
     /// QWERTY の下に、入力欄を置く分だけ空ける。
     private static let qwertyLift: CGFloat = 56
@@ -27,15 +27,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let autoHideKey = "flickAutoHide"
     private static let electronKey = "enableElectronApps"
     private var isDictionaryLoaded = false
-    private let settings = PanelSettings(defaults: .standard)
+    private let settings: PanelSettings
     private let cornerMonitor = CornerMonitor()
     private var arePanelsVisible = true
+
+    init(settings: PanelSettings = PanelSettings(defaults: .standard)) {
+        self.settings = settings
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let menu = NSMenu()
         menu.delegate = self
         menu.autoenablesItems = false
         statusItem.menu = menu
+        FloatingPanel.onRightClick = { [weak self] event, view in self?.showAppMenu(event, in: view) }
 
         focusPolicy.autoShow = UserDefaults.standard.object(forKey: Self.autoShowKey) as? Bool ?? true
         focusPolicy.autoHide = UserDefaults.standard.bool(forKey: Self.autoHideKey)
@@ -47,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             learningURL: LearningModel.defaultURL
         )
         flickPanel.onMoved = { [weak self] origin in self?.settings.setOrigin(origin, of: .flick) }
-        flickPanel.onGripClicked = { [weak self] view in self?.showScaleMenu(for: .flick, from: view) }
+        flickPanel.onGripClicked = { [weak self] view in self?.showPanelMenu(for: .flick, from: view) }
         flickPanel.constrain = { [weak self] origin in self?.constrained(origin, of: .flick) ?? origin }
         flickPanel.mirrorsCandidates = settings.mirrorsCandidates
         flickPanel.show()
@@ -63,11 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.applyFocusPolicy()
         }
         compactPanel.onMoved = { [weak self] panel, origin in self?.settings.setOrigin(origin, of: panel) }
-        compactPanel.onGripClicked = { [weak self] panel, view in self?.showScaleMenu(for: panel, from: view) }
+        compactPanel.onGripClicked = { [weak self] panel, view in self?.showPanelMenu(for: panel, from: view) }
         compactPanel.constrain = { [weak self] panel, origin in self?.constrained(origin, of: panel) ?? origin }
         compactPanel.show()
         self.compactPanel = compactPanel
         applyLayout()
+        applyOpacity()
         applyFocusPolicy()
 
         cornerMonitor.corners = settings.corners
@@ -159,20 +166,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return PanelSettings.clampedOrigin(origin, extent: extent, bounds: bounds)
     }
 
-    private func showScaleMenu(for panel: PanelID, from view: NSView) {
-        makeScaleMenu(for: panel).popUp(positioning: nil, at: NSPoint(x: view.bounds.midX, y: view.bounds.midY), in: view)
+    private func applyOpacity() {
+        compactPanel?.setOpacity(settings.opacity(of: .compact))
+        compactPanel?.qwerty.setOpacity(settings.opacity(of: .qwerty))
+        flickPanel?.setOpacity(settings.opacity(of: .flick))
     }
 
-    private func makeScaleMenu(for panel: PanelID) -> NSMenu {
+    private func showPanelMenu(for panel: PanelID, from view: NSView) {
+        makePanelMenu(for: panel).popUp(positioning: nil, at: NSPoint(x: view.bounds.midX, y: view.bounds.midY), in: view)
+    }
+
+    /// 持ち手のクリックで開く、そのパネル専用のメニュー。
+    func makePanelMenu(for panel: PanelID) -> NSMenu {
         let menu = NSMenu()
-        for value in PanelSettings.scaleChoices {
-            let item = NSMenuItem(title: "\(Int((value * 100).rounded()))%", action: #selector(selectScale(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = ScaleChoice(panel: panel, scale: value)
-            item.state = settings.scale(of: panel) == value ? .on : .off
-            menu.addItem(item)
-        }
+        menu.addItem(makeOpacityItem("不透明度", for: panel))
+        menu.addItem(makeScaleItem("倍率", for: panel))
         return menu
+    }
+
+    /// メニューバーのアイコンが隠れていても、右クリックから同じメニューを使えるようにする。
+    private func showAppMenu(_ event: NSEvent, in view: NSView) {
+        makeAppMenu().popUp(positioning: nil, at: view.convert(event.locationInWindow, from: nil), in: view)
+    }
+
+    /// メニューバーと同じ、アプリ全体のメニュー。
+    func makeAppMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menuNeedsUpdate(menu)
+        return menu
+    }
+
+    private func makeScaleItem(_ title: String, for panel: PanelID) -> NSMenuItem {
+        makeSubmenu(title, PanelSettings.scaleChoices.map { value in
+            (Self.percent(value), PanelChoice(panel: panel, value: value), settings.scale(of: panel) == value)
+        }, action: #selector(selectScale(_:)))
+    }
+
+    private func makeOpacityItem(_ title: String, for panel: PanelID) -> NSMenuItem {
+        makeSubmenu(title, PanelSettings.opacityChoices.map { value in
+            (Self.percent(value), PanelChoice(panel: panel, value: value), settings.opacity(of: panel) == value)
+        }, action: #selector(selectOpacity(_:)))
+    }
+
+    /// パネルごとの項目を、1つの階層にまとめる。
+    private func makePerPanelItem(_ title: String, _ makeItem: (String, PanelID) -> NSMenuItem) -> NSMenuItem {
+        let submenu = NSMenu()
+        for (panel, name) in [(PanelID.compact, "コンパクト"), (.flick, "フリック"), (.qwerty, "QWERTY")] {
+            submenu.addItem(makeItem(name, panel))
+        }
+        let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
+    }
+
+    private static func percent(_ value: CGFloat) -> String {
+        "\(Int((value * 100).rounded()))%"
     }
 
     private func togglePanels() {
@@ -235,15 +284,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(makeSubmenu("隅に置く時間", PanelSettings.dwellChoices.map { value in
             ("\(value) 秒", value, settings.dwell == value)
         }, action: #selector(selectDwell(_:))))
-        let scaleMenu = NSMenu()
-        for (panel, title) in [(PanelID.compact, "コンパクト"), (.flick, "フリック"), (.qwerty, "QWERTY")] {
-            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            item.submenu = makeScaleMenu(for: panel)
-            scaleMenu.addItem(item)
-        }
-        let scaleItem = NSMenuItem(title: "パネルの倍率を変更", action: nil, keyEquivalent: "")
-        scaleItem.submenu = scaleMenu
-        menu.addItem(scaleItem)
+        menu.addItem(makePerPanelItem("パネルの倍率を変更", makeScaleItem(_:for:)))
+        menu.addItem(makePerPanelItem("パネルの不透明度を変更", makeOpacityItem(_:for:)))
         addActionItem(to: menu, "パネルとガイドを画面内に収める", #selector(toggleKeepsInScreen)).state = settings.keepsInScreen ? .on : .off
         addActionItem(to: menu, "候補が隠れるときに左右反転する", #selector(toggleMirrorsCandidates)).state = settings.mirrorsCandidates ? .on : .off
         addActionItem(to: menu, "パネルの位置を初期に戻す", #selector(resetPositions))
@@ -306,9 +348,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func selectScale(_ sender: NSMenuItem) {
-        guard let choice = sender.representedObject as? ScaleChoice else { return }
-        settings.setScale(choice.scale, of: choice.panel)
+        guard let choice = sender.representedObject as? PanelChoice else { return }
+        settings.setScale(choice.value, of: choice.panel)
         applyLayout()
+    }
+
+    @objc private func selectOpacity(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? PanelChoice else { return }
+        settings.setOpacity(choice.value, of: choice.panel)
+        applyOpacity()
     }
 
     @objc private func toggleKeepsInScreen() {

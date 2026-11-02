@@ -57,7 +57,7 @@ final class QwertyPanel {
     /// 持ち手で動かせる範囲の制限。
     var constrain: ((NSPoint) -> NSPoint)?
 
-    private let panel: FloatingPanel
+    let panel: FloatingPanel
     let logicalSize: NSSize
     private var keyViews: [(key: QwertyKey, view: KeyView)] = []
     /// スマートフォンと同じく、1回で次の1文字だけ、連続2回で固定(CapsLock)。
@@ -120,6 +120,10 @@ final class QwertyPanel {
 
     func setPlacement(origin: NSPoint, scale: CGFloat) {
         panel.place(origin: origin, logicalSize: logicalSize, scale: scale)
+    }
+
+    func setOpacity(_ opacity: CGFloat) {
+        panel.alphaValue = opacity
     }
 
     func show() {

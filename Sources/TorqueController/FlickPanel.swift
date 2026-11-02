@@ -45,9 +45,9 @@ final class FlickPanel {
     let panel: FloatingPanel
     private let logicalSize: NSSize
     private var scale: CGFloat = 1
-    private let guidePanel: FloatingPanel
+    let guidePanel: FloatingPanel
     private let guideView = FlickGuideView()
-    private let compositionPanel: FloatingPanel
+    let compositionPanel: FloatingPanel
     private let compositionView = CompositionView()
     private var gridViews: [KeyView] = []
     private var modeViews: [InputMode: KeyView] = [:]
@@ -80,7 +80,7 @@ final class FlickPanel {
 
     private var converter: Converter?
     private let learningURL: URL
-    private let overlayPanel: FloatingPanel
+    let overlayPanel: FloatingPanel
     private let overlayView = CandidateOverlayView()
     /// 変換中の状態。変換していないときは nil。
     private var session: ConversionSession?
@@ -159,6 +159,13 @@ final class FlickPanel {
         let side = Self.guideSide
         guidePanel.place(origin: .zero, logicalSize: NSSize(width: side, height: side), scale: scale)
         showSession()
+    }
+
+    /// 入力欄はパネルに従う。ガイドと候補の重ね表示は、選ぶ瞬間に見えにくくしないよう常に不透明のまま。
+    func setOpacity(_ opacity: CGFloat) {
+        panel.alphaValue = opacity
+        compositionPanel.alphaValue = opacity
+        compositionView.skipsPanelOverlap = opacity < 1
     }
 
     func setVisible(_ isVisible: Bool) {

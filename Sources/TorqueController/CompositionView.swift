@@ -51,6 +51,10 @@ final class CompositionView: NSView {
     }
     /// 入力欄の幅の上限。パネルの幅で決まる。これを超えると畳む。
     var maxFieldWidth: CGFloat = 0
+    /// パネルと重なる部分の背景を塗らない。透けているときに塗ると、重なりが濃く見える。
+    var skipsPanelOverlap = false {
+        didSet { needsDisplay = true }
+    }
     var onClick: (@MainActor () -> Void)?
     /// 開閉のマークのクリックを伝える。
     var onExpandChange: (@MainActor (Bool) -> Void)?
@@ -114,7 +118,20 @@ final class CompositionView: NSView {
         // 下の角はパネルの中に隠れるので、丸めない
         NSColor.windowBackgroundColor.setFill()
         let outer = NSRect(x: 0, y: -12, width: bounds.width, height: bounds.height + 12)
-        NSBezierPath(roundedRect: outer, xRadius: 12, yRadius: 12).fill()
+        let outerPath = NSBezierPath(roundedRect: outer, xRadius: 12, yRadius: 12)
+        if skipsPanelOverlap {
+            // パネルの上の角の外側だけは、背景をつなげるために塗る
+            NSGraphicsContext.saveGraphicsState()
+            outerPath.addClip()
+            let panelTop = NSRect(x: 0, y: Self.overlap - 24, width: maxFieldWidth + Self.margin * 2, height: 24)
+            let path = NSBezierPath(rect: bounds)
+            path.append(NSBezierPath(roundedRect: panelTop, xRadius: 12, yRadius: 12))
+            path.windingRule = .evenOdd
+            path.fill()
+            NSGraphicsContext.restoreGraphicsState()
+        } else {
+            outerPath.fill()
+        }
 
         NSColor.textBackgroundColor.setFill()
         NSBezierPath(roundedRect: fieldRect, xRadius: 8, yRadius: 8).fill()

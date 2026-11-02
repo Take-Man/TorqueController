@@ -42,10 +42,12 @@ enum ScreenCorner: String, CaseIterable {
     }
 }
 
-/// パネルの位置と倍率、四隅の設定の保存。
+/// パネルの位置、倍率、不透明度と、四隅の設定の保存。
 struct PanelSettings {
     static let scaleRange: ClosedRange<CGFloat> = 0.7...2
     static let scaleChoices: [CGFloat] = [0.7, 0.8, 0.9, 1, 1.1, 1.3, 1.5, 1.75, 2]
+    static let opacityRange: ClosedRange<CGFloat> = 0.5...1
+    static let opacityChoices: [CGFloat] = [1, 0.9, 0.75, 0.5]
     static let dwellChoices: [TimeInterval] = [0.5, 1, 1.5, 2]
 
     private enum Key {
@@ -56,6 +58,7 @@ struct PanelSettings {
         static let mirrorsCandidates = "mirrorCandidates"
         static func origin(_ panel: PanelID) -> String { "panelOrigin.\(panel.rawValue)" }
         static func scale(_ panel: PanelID) -> String { "panelScale.\(panel.rawValue)" }
+        static func opacity(_ panel: PanelID) -> String { "panelOpacity.\(panel.rawValue)" }
     }
 
     let defaults: UserDefaults
@@ -68,6 +71,16 @@ struct PanelSettings {
 
     func setScale(_ scale: CGFloat, of panel: PanelID) {
         defaults.set(Double(scale), forKey: Key.scale(panel))
+    }
+
+    func opacity(of panel: PanelID) -> CGFloat {
+        let stored = defaults.double(forKey: Key.opacity(panel))
+        guard stored > 0 else { return 1 }
+        return min(Self.opacityRange.upperBound, max(Self.opacityRange.lowerBound, CGFloat(stored)))
+    }
+
+    func setOpacity(_ opacity: CGFloat, of panel: PanelID) {
+        defaults.set(Double(opacity), forKey: Key.opacity(panel))
     }
 
     /// パネルとガイドが画面からはみ出さないように、動かせる範囲を制限する。

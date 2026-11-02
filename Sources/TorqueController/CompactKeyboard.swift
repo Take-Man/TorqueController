@@ -43,8 +43,8 @@ final class CompactKeyboard {
     static let width = CGFloat(Metrics.columns) * Metrics.keySide + CGFloat(Metrics.columns - 1) * Metrics.gap + Metrics.padding * 2
     private static let height = CGFloat(Metrics.rows) * Metrics.keySide + CGFloat(Metrics.rows - 1) * Metrics.gap + Metrics.padding * 2
 
-    /// フリックの表示切替。今の表示状態を返す。
-    var onToggleFlick: (() -> Bool)?
+    /// フリックの切替キーが押されたとき。
+    var onToggleFlick: (() -> Void)?
 
     private let panel: KeyPanel
     private let radialPanel: KeyPanel
@@ -59,6 +59,7 @@ final class CompactKeyboard {
     private var shortcuts: [Shortcut]
     private var states: [Modifier: LatchState] = [:]
     private var qwertyVisibility = QwertyVisibility()
+    private var isSecureFocused = false
     private var isDragging = false
     private var radial: ShortcutRadial?
 
@@ -137,16 +138,31 @@ final class CompactKeyboard {
 
         flickToggleView.frame = frame(column: 2, row: 0)
         flickToggleView.cornerRadius = Metrics.keySide / 2
-        flickToggleView.isSelected = true
         flickToggleView.onEnd = { [weak self] _, isInside in
-            guard isInside, let self else { return }
-            self.flickToggleView.isSelected = self.onToggleFlick?() ?? false
+            if isInside {
+                self?.onToggleFlick?()
+            }
         }
         background.addSubview(flickToggleView)
     }
 
     func show() {
         panel.orderFrontRegardless()
+    }
+
+    /// フリックパネルの表示状態を、切替キーに反映する。
+    func setFlickVisible(_ isVisible: Bool) {
+        flickToggleView.isSelected = isVisible
+    }
+
+    /// パスワード欄にフォーカスがある間は QWERTYパネルを出す。切替キーで隠すこともできる。
+    func setSecureFocused(_ isSecureFocused: Bool) {
+        guard isSecureFocused != self.isSecureFocused else { return }
+        self.isSecureFocused = isSecureFocused
+        if isSecureFocused {
+            qwertyVisibility.modifierSelected()
+        }
+        applySelection()
     }
 
     func setEnabled(_ isEnabled: Bool) {
@@ -185,7 +201,7 @@ final class CompactKeyboard {
         let highlighted = active.isEmpty ? [] : Set(shortcuts.filter { $0.modifiers == active }.map(\.key))
         qwerty.update(modifiers: active, highlighted: highlighted)
 
-        if active.isEmpty {
+        if active.isEmpty, !isSecureFocused {
             qwertyVisibility.selectionEmptied()
         }
         if qwertyVisibility.isVisible {

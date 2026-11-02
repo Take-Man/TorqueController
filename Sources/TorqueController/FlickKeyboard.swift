@@ -55,6 +55,8 @@ final class FlickKeyboard {
     private var mode = InputMode.kana
     private var shift = LatchState.off
     private var isEnabled = true
+    /// パスワード欄にフォーカスがある間は、学習に記録しない。
+    var isLearningEnabled = true
 
     private var converter: Converter?
     private let learningURL: URL
@@ -130,14 +132,13 @@ final class FlickKeyboard {
         compositionPanel.orderOut(nil)
     }
 
-    /// 表示を切り替えて、切り替えた後の表示状態を返す。
-    func toggle() -> Bool {
-        if panel.isVisible {
-            hide()
-        } else {
+    func setVisible(_ isVisible: Bool) {
+        guard isVisible != panel.isVisible else { return }
+        if isVisible {
             show()
+        } else {
+            hide()
         }
-        return panel.isVisible
     }
 
     func setEnabled(_ isEnabled: Bool) {
@@ -478,7 +479,7 @@ final class FlickKeyboard {
     }
 
     private func recordLearning(_ selections: [ConversionSession.Selection]) {
-        guard !selections.isEmpty else { return }
+        guard !selections.isEmpty, isLearningEnabled else { return }
         for selection in selections {
             converter?.learning.record(reading: selection.reading, surface: selection.surface)
         }

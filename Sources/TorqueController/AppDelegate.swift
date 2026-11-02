@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var focusPolicy = FocusPolicy()
     private static let autoShowKey = "flickAutoShow"
     private static let autoHideKey = "flickAutoHide"
+    private static let electronKey = "enableElectronApps"
     private var isDictionaryLoaded = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self, self.focusPolicy.observe(kind: kind, elementChanged: elementChanged) else { return }
             self.applyFocusPolicy()
         }
+        focusMonitor.enablesElectronApps = UserDefaults.standard.bool(forKey: Self.electronKey)
         focusMonitor.start()
 
         // 未許可なら、初回だけ macOS の許可ダイアログを出す
@@ -102,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         addActionItem(to: menu, "フリックパネルを自動で表示", #selector(toggleAutoShow)).state = focusPolicy.autoShow ? .on : .off
         addActionItem(to: menu, "フリックパネルを自動で隠す", #selector(toggleAutoHide)).state = focusPolicy.autoHide ? .on : .off
+        addActionItem(to: menu, "Electron アプリの入力欄も判定する", #selector(toggleElectronApps)).state = focusMonitor.enablesElectronApps ? .on : .off
         menu.addItem(.separator())
         addActionItem(to: menu, "ショートカットの設定を開く…", #selector(openShortcutSettings))
         addActionItem(to: menu, "ショートカットの設定を読み直す", #selector(reloadShortcutSettings))
@@ -132,6 +135,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleAutoHide() {
         focusPolicy.autoHide.toggle()
         UserDefaults.standard.set(focusPolicy.autoHide, forKey: Self.autoHideKey)
+    }
+
+    @objc private func toggleElectronApps() {
+        focusMonitor.enablesElectronApps.toggle()
+        UserDefaults.standard.set(focusMonitor.enablesElectronApps, forKey: Self.electronKey)
     }
 
     @objc private func openShortcutSettings() {

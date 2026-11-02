@@ -93,10 +93,22 @@ final class FocusMonitor {
 
     /// 観測のたびに、種類と要素が変わったかを伝える。
     var onObserve: ((FocusKind, Bool) -> Void)?
+    /// Electron 系のアプリにも入力欄を出してもらう。オフに戻すと、こちらがオンにしたアプリを元に戻す。
+    var enablesElectronApps = false {
+        didSet {
+            if !enablesElectronApps {
+                restoreElectronApps()
+            }
+        }
+    }
 
     private let systemWide = AXUIElementCreateSystemWide()
     private var lastElement: AXUIElement?
     private var timer: Timer?
+    private static let electronAttribute = "AXManualAccessibility" as CFString
+    /// 属性を確かめたアプリ。1つのアプリには1回だけ設定する。
+    private var checkedProcesses: Set<pid_t> = []
+    private var enabledProcesses: Set<pid_t> = []
 
     func start() {
         AXUIElementSetMessagingTimeout(systemWide, Self.messagingTimeout)
@@ -106,7 +118,32 @@ final class FocusMonitor {
         }
     }
 
+    /// 前面のアプリがこの属性を持っていれば、1回だけ真に設定する。アプリの一覧は持たない。
+    private func enableFrontmostElectronApp() {
+        guard enablesElectronApps, let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              checkedProcesses.insert(pid).inserted
+        else { return }
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, Self.messagingTimeout)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, Self.electronAttribute, &value) == .success else { return }
+        if AXUIElementSetAttributeValue(application, Self.electronAttribute, kCFBooleanTrue) == .success {
+            enabledProcesses.insert(pid)
+        }
+    }
+
+    private func restoreElectronApps() {
+        for pid in enabledProcesses {
+            let application = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(application, Self.messagingTimeout)
+            AXUIElementSetAttributeValue(application, Self.electronAttribute, kCFBooleanFalse)
+        }
+        enabledProcesses = []
+        checkedProcesses = []
+    }
+
     private func poll() {
+        enableFrontmostElectronApp()
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &value)
         // 権限がないときは判定できないので、表示を変えない

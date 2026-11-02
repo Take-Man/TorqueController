@@ -14,6 +14,13 @@ enum TextSender {
         case upArrow = 126
     }
 
+    struct Stroke: Equatable {
+        let keyCode: CGKeyCode
+        let isDown: Bool
+        let flags: CGEventFlags
+        let isModifier: Bool
+    }
+
     /// 1つのイベントに載せる UTF-16 の上限。これより長い文字列は実機で切れるという情報があるので分けて送る。
     private static let maxUnitsPerEvent = 20
 
@@ -25,28 +32,43 @@ enum TextSender {
     }
 
     static func send(_ key: Key, modifiers: Set<Modifier> = []) {
-        post(virtualKey: key.rawValue, unicode: nil, flags: modifiers.flags)
+        post(virtualKey: key.rawValue, unicode: nil, modifiers: modifiers)
     }
 
-    /// ショートカットを、修飾フラグ付きの1つのキーイベントとして送る。修飾キーを押したままにはしない。
+    /// ショートカットを、修飾キーを押す、キーを押して離す、修飾キーを離す、の一続きで送る。
     static func send(character: String, modifiers: Set<Modifier>) {
         guard let code = KeyboardLayout.keyCode(for: character) else {
             NSLog("キーコードが見つかりません: %@", character)
             return
         }
-        post(virtualKey: code, unicode: nil, flags: modifiers.flags)
+        post(virtualKey: code, unicode: nil, modifiers: modifiers)
     }
 
     /// 修飾キー単体を送る。常に左側のキーコードで、押して離すまでを1組で送る。
     static func send(modifier: Modifier) {
-        guard let source = CGEventSource(stateID: .privateState),
-              let down = CGEvent(keyboardEventSource: source, virtualKey: modifier.leftKeyCode, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: modifier.leftKeyCode, keyDown: false)
-        else { return }
-        down.flags = modifier.flag
-        up.flags = []
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        post(virtualKey: nil, unicode: nil, modifiers: [modifier])
+    }
+
+    /// 送るイベントの順序とフラグ。最後のイベントは必ずフラグなしになる。
+    /// AirController はキーイベントのフラグを実際に押している修飾キーとして覚えてクリックに付けるので、
+    /// フラグを残して終わると、以後のクリックがずっと修飾キー付きになる。
+    static func strokes(virtualKey: CGKeyCode?, modifiers: Set<Modifier>) -> [Stroke] {
+        let ordered = Modifier.allCases.filter(modifiers.contains)
+        var result: [Stroke] = []
+        var held: CGEventFlags = []
+        for modifier in ordered {
+            held.insert(modifier.flag)
+            result.append(Stroke(keyCode: modifier.leftKeyCode, isDown: true, flags: held, isModifier: true))
+        }
+        if let virtualKey {
+            result.append(Stroke(keyCode: virtualKey, isDown: true, flags: modifiers.flags, isModifier: false))
+            result.append(Stroke(keyCode: virtualKey, isDown: false, flags: modifiers.flags, isModifier: false))
+        }
+        for modifier in ordered.reversed() {
+            held.remove(modifier.flag)
+            result.append(Stroke(keyCode: modifier.leftKeyCode, isDown: false, flags: held, isModifier: true))
+        }
+        return result
     }
 
     /// 文字の途中で切らずに、上限以下の長さに分ける。
@@ -66,18 +88,23 @@ enum TextSender {
         return result
     }
 
-    /// keyDown と keyUp を両方作れたときだけ送るので、押したままの状態は残らない。
-    private static func post(virtualKey: CGKeyCode, unicode: [UniChar]?, flags: CGEventFlags = []) {
-        guard let source = CGEventSource(stateID: .privateState),
-              let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)
-        else { return }
+    /// 全てのイベントを作れたときだけ送るので、押したままの状態は残らない。
+    private static func post(virtualKey: CGKeyCode?, unicode: [UniChar]?, modifiers: Set<Modifier> = []) {
+        guard let source = CGEventSource(stateID: .privateState) else { return }
 
-        for event in [down, up] {
-            event.flags = flags
-            if let unicode {
+        var events: [CGEvent] = []
+        for stroke in strokes(virtualKey: virtualKey, modifiers: modifiers) {
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: stroke.isDown)
+            else { return }
+            if stroke.isModifier {
+                event.type = .flagsChanged
+            } else if let unicode {
                 event.keyboardSetUnicodeString(stringLength: unicode.count, unicodeString: unicode)
             }
+            event.flags = stroke.flags
+            events.append(event)
+        }
+        for event in events {
             event.post(tap: .cghidEventTap)
         }
     }

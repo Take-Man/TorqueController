@@ -195,6 +195,41 @@ func farOutsideTheCircleStillSelectsByDirection(offset: CGVector) {
     #expect(Modifier.allCases.map(\.leftKeyCode) == [55, 56, 58, 59])
 }
 
+@Test func shortcutPressesAndReleasesModifiersAroundKey() {
+    let strokes = TextSender.strokes(virtualKey: 9, modifiers: [.shift, .command])
+    #expect(strokes == [
+        .init(keyCode: 55, isDown: true, flags: [.maskCommand], isModifier: true),
+        .init(keyCode: 56, isDown: true, flags: [.maskCommand, .maskShift], isModifier: true),
+        .init(keyCode: 9, isDown: true, flags: [.maskCommand, .maskShift], isModifier: false),
+        .init(keyCode: 9, isDown: false, flags: [.maskCommand, .maskShift], isModifier: false),
+        .init(keyCode: 56, isDown: false, flags: [.maskCommand], isModifier: true),
+        .init(keyCode: 55, isDown: false, flags: [], isModifier: true),
+    ])
+}
+
+@Test func strokesAlwaysEndWithoutFlags() {
+    // 全ての修飾キーの組み合わせで、キーありとキーなしの両方を確かめる
+    for mask in 0..<(1 << Modifier.allCases.count) {
+        let modifiers = Set(Modifier.allCases.enumerated().filter { mask & (1 << $0.offset) != 0 }.map(\.element))
+        for virtualKey in [CGKeyCode(9), nil] {
+            let strokes = TextSender.strokes(virtualKey: virtualKey, modifiers: modifiers)
+            #expect(strokes.isEmpty || strokes.last?.flags == [])
+            #expect(strokes.filter(\.isDown).count == strokes.filter { !$0.isDown }.count)
+        }
+    }
+}
+
+@Test func plainKeyAndSingleModifierStrokes() {
+    #expect(TextSender.strokes(virtualKey: 36, modifiers: []) == [
+        .init(keyCode: 36, isDown: true, flags: [], isModifier: false),
+        .init(keyCode: 36, isDown: false, flags: [], isModifier: false),
+    ])
+    #expect(TextSender.strokes(virtualKey: nil, modifiers: [.command]) == [
+        .init(keyCode: 55, isDown: true, flags: [.maskCommand], isModifier: true),
+        .init(keyCode: 55, isDown: false, flags: [], isModifier: true),
+    ])
+}
+
 @Test func modifierShowsQwertyAndEmptySelectionHidesIt() {
     var visibility = QwertyVisibility()
     visibility.modifierSelected()

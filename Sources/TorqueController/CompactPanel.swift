@@ -74,6 +74,8 @@ final class CompactPanel {
     private var radial: ShortcutRadial?
     private var scale: CGFloat = 1
     private var arePanelsVisible = true
+    /// 選んだ修飾キーを、パネルの外のクリック、ドラッグ、スクロールに乗せる。
+    private let modifierTap = ModifierTap(doubleClickInterval: NSEvent.doubleClickInterval)
 
     private var activeModifiers: Set<Modifier> {
         Set(states.filter { $0.value != .off }.keys)
@@ -163,6 +165,8 @@ final class CompactPanel {
             }
         }
         background.addSubview(flickToggleView)
+
+        modifierTap.onRelease = { [weak self] generation in self?.cursorOperationEnded(generation: generation) }
     }
 
     var qwertyLogicalSize: NSSize { qwerty.logicalSize }
@@ -274,6 +278,22 @@ final class CompactPanel {
             qwerty.hide()
         }
         qwertyToggleView.isSelected = qwertyVisibility.isVisible
+        updateModifierTap()
+    }
+
+    // MARK: - カーソル操作への修飾キー
+
+    /// パネルを隠している間は、選択が見えないので乗せない。
+    private func updateModifierTap() {
+        let active = arePanelsVisible ? activeModifiers : []
+        let locked = Set(states.filter { $0.value == .locked }.keys).intersection(active)
+        modifierTap.update(selected: active.flags, locked: locked.flags, doubleClickInterval: NSEvent.doubleClickInterval)
+    }
+
+    /// カーソル操作で、固定していない選択を使い終えた。そのあとにパネルの選択が変わっていれば何もしない。
+    private func cursorOperationEnded(generation: Int) {
+        guard generation == modifierTap.generation else { return }
+        releaseSelection()
     }
 
     private func toggleQwerty() {

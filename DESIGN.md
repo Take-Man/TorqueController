@@ -152,8 +152,9 @@ AI(Claude)が次回以降のチャットや Claude Code で読み込む前提で
 
 ## 配布
 - 範囲: 知人数人に直接渡す(2026-11-02 決定)。今の自己署名のまま署名し、Developer ID と公証は使わない。一般公開に広げるなら、Developer ID の署名と公証、フリック入力の特許の確認が必要(「未決の論点」)。
-- .dmg: scripts/build-dmg.sh が .build/TorqueController-<CFBundleShortVersionString>.dmg を作る。中身は .app、/Applications へのリンク、案内(App/ReadMe-ja.html を textutil で変換した「はじめにお読みください.rtf」)。形式は ULMO(LZMA)で、0.1(ビルド 3)は 15.4 MB(15,438,471 バイト。作るたびに少し変わる)。証明書で署名できなかった .app からは作らない。アドホック署名に落ちた版を渡すと、入れ替えのたびに許可が外れるため。Finder の窓の配置や背景は作っていない。
-- 版: 渡すたびに CFBundleVersion を上げる。CFBundleShortVersionString は 0.1 のまま。
+- .dmg: scripts/build-dmg.sh が .build/TorqueController-<CFBundleShortVersionString>.dmg を作る。中身は .app、/Applications へのリンク、案内(App/ReadMe-ja.html を textutil で変換した「はじめにお読みください.rtf」)。形式は ULMO(LZMA)で、0.1(ビルド 3)は 15.4 MB(15,438,471 バイト)、0.2(ビルド 5)は 15.6 MB(15,635,475 バイト)。作るたびに少し変わる。証明書で署名できなかった .app からは作らない。アドホック署名に落ちた版を渡すと、入れ替えのたびに許可が外れるため。Finder の窓の配置や背景は作っていない。
+- 版: 渡すたびに CFBundleVersion を上げる。0.1 はビルド 3(ビルド 4 は入れ替えの確認に使った)。0.2(ビルド 5、2026-11-12)でカーソル操作への修飾キーを足した。
+- 渡し方(0.2 から): GitHub(Take-Man/TorqueController)の Releases に、版を問わず TorqueController.dmg の名前で添付し、プレリリースにせず latest にする。LP は https://github.com/Take-Man/TorqueController/releases/latest/download/TorqueController.dmg を指している。
 - 対応: 実行ファイルは arm64 のみ(lipo で確認)なので Intel の Mac では動かない。macOS 15 以降。案内にも書いた。
 - 案内は受け取った人がターミナルを使わない前提で書く。テキストエディットのダークで読めることを確認した。qlmanage のサムネイルは暗い地に黒い文字になるが、文字に色の指定はなく(NSAttributedString で確認)、サムネイルの癖だと判断した。スペースキーの Quick Look の表示は未確認。
 - Gatekeeper(開発者のアカウントで、ダウンロードを模して .dmg に隔離属性を付けて確認): .dmg と中の .app はどちらも spctl で rejected(.app の origin は TorqueController Local Signing)。.dmg 上の .app の署名は有効。.dmg からコピーした .app に隔離属性が引き継がれる。

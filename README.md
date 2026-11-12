@@ -40,7 +40,7 @@ open .build/app/TorqueController.app
 scripts/build-dmg.sh
 ```
 
-`.build/TorqueController-0.1.dmg` ができる。中身は TorqueController.app、アプリケーションフォルダへのリンク、受け取った人向けの案内([App/ReadMe-ja.html](App/ReadMe-ja.html) から作る)。Apple シリコンの Mac と macOS 15 以降が必要。
+`.build/TorqueController-0.2.dmg` ができる。中身は TorqueController.app、アプリケーションフォルダへのリンク、受け取った人向けの案内([App/ReadMe-ja.html](App/ReadMe-ja.html) から作る)。Apple シリコンの Mac と macOS 15 以降が必要。
 
 アイコンの元データは [App/AppIcon.svg](App/AppIcon.svg) と [App/MenuBarIcon.svg](App/MenuBarIcon.svg) で、`scripts/build-icons.sh` が書き出す(build-app.sh から呼ぶ)。追加のインストールは要らない。
 
